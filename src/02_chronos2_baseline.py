@@ -10,9 +10,7 @@ print("--- Starting Chronos-2 Forecasting ---")
 path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'datasets', 'Dati.csv'))
 
 print(f"Loading data from: {path}")
-# Added thousands='.' to correctly parse numbers like 7.873.993
-# Added decimal=',' to handle European decimal format if present
-df = pd.read_csv(path, sep=';', thousands='.', decimal=',')
+df = pd.read_csv(path, sep=';')
 
 # 2. Context preparation
 context_length = 168

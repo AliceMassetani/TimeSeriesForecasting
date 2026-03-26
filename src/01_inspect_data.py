@@ -6,13 +6,20 @@ path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'datasets',
 
 try:
     # Load dataset with semicolon separator
-    df = pd.read_csv(path, sep=';')
+    df = pd.read_csv(path, skiprows=4)
+
+    # Renaming the column Label to TimeStamp
+    if 'Label' in df.columns:
+        df = df.rename(columns={'Label': 'TimeStamp'})  
+
     print("--- DATA INSPECTION ---")
 
     # 1. Missing Values (NaN) Check
     # Chronos-2 works best with continuous sequences; gaps should be identified
     print(f"Missing values (NaN) in CapacityUtilization: {df['CapacityUtilization'].isnull().sum()}")
     
+    
+
     # 2. Temporal Analysis
     # Ensure the TimeStamp column is correctly formatted for sequence alignment
     if 'TimeStamp' in df.columns:
