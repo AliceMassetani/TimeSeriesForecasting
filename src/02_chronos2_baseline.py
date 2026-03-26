@@ -2,7 +2,7 @@ import pandas as pd
 import torch
 import os
 import numpy as np
-from chronos import Chronos2Pipeline
+from chronos import ChronosPipeline
 
 print("--- Starting Chronos-2 Forecasting ---")
 
@@ -10,7 +10,7 @@ print("--- Starting Chronos-2 Forecasting ---")
 path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'datasets', 'Dati.csv'))
 
 print(f"Loading data from: {path}")
-df = pd.read_csv(path, sep=';')
+df = pd.read_csv(path, skiprows=4)
 
 # 2. Context preparation
 context_length = 168
@@ -28,7 +28,7 @@ context_tensor = torch.tensor(context_data, dtype=torch.float32).unsqueeze(0).un
 
 # 3. Load the Amazon Chronos-2 model
 print("Loading Amazon Chronos-2 model...")
-pipeline = Chronos2Pipeline.from_pretrained(
+pipeline = ChronosPipeline.from_pretrained(
     "amazon/chronos-2",
     device_map="cpu",         # Using CPU for compatibility
     dtype=torch.float32, # Using float32 to avoid BFloat16 CPU errors
