@@ -76,26 +76,31 @@ def run_backtesting():
     print(f"Mean Absolute Error (MAE): {mae:.2f}")
     print(f"Root Mean Squared Error (RMSE): {rmse:.2f}")
 
-    print("--- 7. Saving Visual Evaluation ---")
+    print("--- 7. Saving Visual Evaluation (Zoom: Last 7 Days) ---")
     plt.figure(figsize=(14, 7))
     
-    # Plotting only the tail of the train set to keep the chart readable
-    plot_train = train_df.tail(168) # Last week of training data
+    # We zoom into the last 168 hours (7 days) to better visualize daily patterns
+    zoom_hours = 168
+    test_df_zoom = test_df.tail(zoom_hours)
+    forecast_df_zoom = forecast_df.tail(zoom_hours)
     
-    plt.plot(plot_train['TimeStamp'], plot_train['CapacityUtilization'], label='Train Data (Context)', color='black', linewidth=1.5)
-    plt.plot(test_df['TimeStamp'], test_df['CapacityUtilization'], label='Actual Test Data (Reality)', color='green', linewidth=1.5)
+    # Plotting the actual data (Reality)
+    plt.plot(test_df_zoom['TimeStamp'], test_df_zoom['CapacityUtilization'], 
+             label='Actual Test Data (Reality)', color='green', linewidth=1.5, marker='o', markersize=2)
 
     # 1. Median forecast line (P50)
-    plt.plot(forecast_df['TimeStamp'], forecast_df['0.5'], label='Forecast P50 (Expected)', color='blue', linewidth=2)
+    plt.plot(forecast_df_zoom['TimeStamp'], forecast_df_zoom['0.5'], 
+             label='Forecast P50 (Expected)', color='blue', linewidth=2)
     
     # 2. Distinct P90 line (Safety Threshold for the Autoscaler)
-    plt.plot(forecast_df['TimeStamp'], forecast_df['0.9'], label='Safety Threshold P90', color='red', linestyle='--', linewidth=1.5)
+    plt.plot(forecast_df_zoom['TimeStamp'], forecast_df_zoom['0.9'], 
+             label='Safety Threshold P90', color='red', linestyle='--', linewidth=1.5)
     
-    # 3. Uncertainty area between P50 and P90
-    plt.fill_between(forecast_df['TimeStamp'], forecast_df['0.5'], forecast_df['0.9'], color='red', alpha=0.1)
+    # 3. Uncertainty area between P50 and P90 (Visual buffer)
+    plt.fill_between(forecast_df_zoom['TimeStamp'], forecast_df_zoom['0.5'], 
+                     forecast_df_zoom['0.9'], color='red', alpha=0.1)
 
-    
-    plt.title('Backtesting Evaluation: Actual vs Forecast (Last 1000 Hours)')
+    plt.title('Backtesting Evaluation: Zoom on Last 7 Days (168h)')
     plt.xlabel('Time')
     plt.ylabel('Capacity Utilization')
     plt.legend(loc='upper left')
@@ -106,7 +111,8 @@ def run_backtesting():
     outputs_dir = os.path.join(base_dir, '..', 'outputs')
     os.makedirs(outputs_dir, exist_ok=True)
     
-    plot_path = os.path.join(outputs_dir, 'chronos_backtesting_1000h.png')
+    # Use a specific name for the zoomed chart
+    plot_path = os.path.join(outputs_dir, 'chronos_backtesting_7days_zoom.png')
     plt.savefig(plot_path)
     print(f"✅ Evaluation chart saved successfully at: {plot_path}")
 
