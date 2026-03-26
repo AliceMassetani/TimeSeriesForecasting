@@ -7,7 +7,7 @@ import matplotlib.pyplot as plt
 from sklearn.metrics import mean_absolute_error, mean_squared_error
 from chronos import Chronos2Pipeline
 
-def run_long_term_chronos():
+def run_long_term_chronos2():
     base_dir = os.path.dirname(os.path.abspath(__file__))
     data_path = os.path.join(base_dir, '..', 'datasets', 'Dati_processed.csv')
 
@@ -16,8 +16,9 @@ def run_long_term_chronos():
     df['TimeStamp'] = pd.to_datetime(df['TimeStamp'])
     
     # Resample every 3 hours taking the maximum peak for Capacity Planning
-    df_resampled = df.set_index('TimeStamp').resample('3h').max().reset_index()
-    df_resampled = df_resampled.dropna()
+    # We use ffill() to fill any temporal gaps and maintain a strict 3H frequency
+    df_resampled = df.set_index('TimeStamp').resample('3h').max()
+    df_resampled = df_resampled.ffill().reset_index()
 
     # Recreate the necessary covariates on the resampled dataset
     df_resampled['item_id'] = 'appstream_fleet'
@@ -44,6 +45,7 @@ def run_long_term_chronos():
     )
 
     print("--- 4. Running Inference (Long Term) ---")
+    # Using predict_df just like in the successful backtesting script
     forecast_df = pipeline.predict_df(
         df=train_df,
         future_df=future_df,
@@ -65,7 +67,11 @@ def run_long_term_chronos():
     print(f"MAE: {chronos_mae:.2f}")
     print(f"RMSE: {chronos_rmse:.2f}")
 
-    print("--- 6. Saving Visual Evaluation ---")
+    # Prepare outputs directory
+    outputs_dir = os.path.join(base_dir, '..', 'outputs')
+    os.makedirs(outputs_dir, exist_ok=True)
+
+    print("--- 6. Saving Visual Evaluation (Full 90 Days) ---")
     plt.figure(figsize=(16, 8))
     
     # Visual context: last 30 days of history
@@ -88,11 +94,37 @@ def run_long_term_chronos():
     plt.xticks(rotation=45)
     plt.tight_layout()
     
-    outputs_dir = os.path.join(base_dir, '..', 'outputs')
-    os.makedirs(outputs_dir, exist_ok=True)
-    plot_path = os.path.join(outputs_dir, 'long_term_chronos_90days.png')
-    plt.savefig(plot_path)
-    print(f"✅ Chronos-2 chart saved successfully at: {plot_path}")
+    full_plot_path = os.path.join(outputs_dir, 'long_term_chronos_90days.png')
+    plt.savefig(full_plot_path)
+    print(f"✅ Chronos-2 full chart saved successfully at: {full_plot_path}")
+
+    print("--- 7. Saving Visual Evaluation (30-Day ZOOM) ---")
+    plt.figure(figsize=(16, 8))
+    
+    # We zoom on the last 30 days of the test set (30 days * 8 periods/day = 240 steps)
+    zoom_steps = 30 * 8
+    test_df_zoom = test_df.tail(zoom_steps)
+    forecast_df_zoom = forecast_df.tail(zoom_steps)
+    
+    # Actual Data (Green) with markers to see individual points
+    plt.plot(test_df_zoom['TimeStamp'], test_df_zoom['CapacityUtilization'], label='Actual Data (Reality)', color='green', linewidth=2, marker='o', markersize=3)
+    
+    # Chronos P50 (Blue) and P90 (Red)
+    plt.plot(forecast_df_zoom['TimeStamp'], forecast_df_zoom['0.5'], label='Chronos P50 (Median)', color='blue', linewidth=2.5)
+    plt.plot(forecast_df_zoom['TimeStamp'], forecast_df_zoom['0.9'], label='Safety Threshold P90', color='red', linestyle=':', linewidth=1.5)
+    plt.fill_between(forecast_df_zoom['TimeStamp'], forecast_df_zoom['0.5'], forecast_df_zoom['0.9'], color='red', alpha=0.1)
+
+    plt.title('Capacity Planning: Chronos-2 Forecast - ZOOM on Last 30 Days (3H Peaks)')
+    plt.xlabel('Time')
+    plt.ylabel('Max Capacity Utilization (3H)')
+    plt.legend(loc='upper left')
+    plt.grid(True, alpha=0.3)
+    plt.xticks(rotation=45)
+    plt.tight_layout()
+    
+    zoom_plot_path = os.path.join(outputs_dir, 'long_term_chronos_90days_ZOOM.png')
+    plt.savefig(zoom_plot_path)
+    print(f"✅ Chronos-2 ZOOM chart saved successfully at: {zoom_plot_path}")
 
 if __name__ == "__main__":
-    run_long_term_chronos()
+    run_long_term_chronos2()
