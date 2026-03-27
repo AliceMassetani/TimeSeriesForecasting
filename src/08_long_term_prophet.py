@@ -120,8 +120,6 @@ def run_long_term_prophet():
     plt.tight_layout()
     plt.savefig(os.path.join(outputs_dir, 'long_term_prophet_90days_ZOOM.png'))
 
-    #salva i dati previsti
-    #prophet_forecast[['ds','yhat_upper']].to_csv(os.path.join(outputs_dir, 'long_term_prophet_forecast.csv'), index=False)
 
 if __name__ == "__main__":
     run_long_term_prophet()
