@@ -46,14 +46,14 @@ def run_long_term_chronos():
         future_df=future_df,
         id_column="item_id",
         timestamp_column="TimeStamp",
-        target="InUseCapacity", # <--- CAMBIATO QUI
+        target="InUseCapacity", 
         prediction_length=prediction_length,
         quantile_levels=[0.5, 0.9] 
     )
 
     print("--- 5. Evaluating Performance (3 Months) ---")
     y_pred = forecast_df['0.5'].values
-    y_true = test_df['InUseCapacity'].values # <--- CAMBIATO QUI
+    y_true = test_df['InUseCapacity'].values 
 
     chronos_mae = mean_absolute_error(y_true, y_pred)
     chronos_rmse = np.sqrt(mean_squared_error(y_true, y_pred))

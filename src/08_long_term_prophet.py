@@ -2,19 +2,33 @@ import pandas as pd
 import os
 import numpy as np
 import matplotlib.pyplot as plt
+import holidays
 from prophet import Prophet
 from sklearn.metrics import mean_absolute_error, mean_squared_error
 
 def run_long_term_prophet():
     base_dir = os.path.dirname(os.path.abspath(__file__))
     data_path = os.path.join(base_dir, '..', 'datasets', 'Dati_processed.csv')
+    outputs_dir = os.path.join(base_dir, '..', 'outputs')
+    os.makedirs(outputs_dir, exist_ok=True)
 
     print("--- 1. Loading and Resampling Data ---")
     df = pd.read_csv(data_path)
     df['TimeStamp'] = pd.to_datetime(df['TimeStamp'])
-    
+
+    # Add holiday and time features
+    it_holidays = holidays.Italy()
+    df['hour'] = df['TimeStamp'].dt.hour
+    df['day_of_week'] = df['TimeStamp'].dt.dayofweek
+    df['is_holiday'] = df['TimeStamp'].apply(lambda x: int(x in it_holidays))
+
     # Resample every 3 hours taking the maximum peak and fill missing values
-    df_resampled = df.set_index('TimeStamp').resample('3h').max()
+    df_resampled = df.set_index('TimeStamp').resample('3h').agg({
+        'InUseCapacity': 'max',
+        'hour': 'first',
+        'day_of_week': 'first',
+        'is_holiday': 'first'
+    })
     df_resampled = df_resampled.ffill().reset_index()
     
     # Using InUseCapacity (actual users) instead of CapacityUtilization
@@ -35,11 +49,19 @@ def run_long_term_prophet():
         weekly_seasonality=True, 
         daily_seasonality=True
     )
+
+    # Add covariates as regressors
+    prophet_model.add_regressor('hour')
+    prophet_model.add_regressor('day_of_week')
+    prophet_model.add_regressor('is_holiday')
+    
+    # Add country holidays
     prophet_model.add_country_holidays(country_name='IT')
+
     prophet_model.fit(train_df)
     
     print("--- 4. Running Inference ---")
-    future = test_df[['ds']].copy()
+    future = test_df[['ds', 'hour', 'day_of_week', 'is_holiday']].copy()
     prophet_forecast = prophet_model.predict(future)
     
     # LOGARITHMIC INVERSION: converting data back to real scale (actual number of users)
@@ -55,8 +77,6 @@ def run_long_term_prophet():
     print(f"MAE: {prophet_mae:.2f} Users")
     print(f"RMSE: {prophet_rmse:.2f} Users")
 
-    outputs_dir = os.path.join(base_dir, '..', 'outputs')
-    os.makedirs(outputs_dir, exist_ok=True)
 
     print("--- 6. Saving Visual Evaluation (Full 90 Days) ---")
     plt.figure(figsize=(16, 8))
@@ -99,6 +119,9 @@ def run_long_term_prophet():
     plt.xticks(rotation=45)
     plt.tight_layout()
     plt.savefig(os.path.join(outputs_dir, 'long_term_prophet_90days_ZOOM.png'))
+
+    #salva i dati previsti
+    #prophet_forecast[['ds','yhat_upper']].to_csv(os.path.join(outputs_dir, 'long_term_prophet_forecast.csv'), index=False)
 
 if __name__ == "__main__":
     run_long_term_prophet()
