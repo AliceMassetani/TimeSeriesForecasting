@@ -228,5 +228,4 @@ checkpoints/
 # --- Infrastructure & Framework (Antigravity/Google) ---
 # Exclude local logs and execution outputs
 .antigravity/
-outputs/
 *.log
