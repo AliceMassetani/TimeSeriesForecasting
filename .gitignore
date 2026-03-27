@@ -230,7 +230,3 @@ checkpoints/
 .antigravity/
 outputs/
 *.log
-
-# --- Plots ---
-plots/
-*.png

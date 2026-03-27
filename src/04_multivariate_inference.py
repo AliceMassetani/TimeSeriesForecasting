@@ -99,7 +99,10 @@ def run_inference():
     plt.tight_layout()
     
     # Save the plot as an image file in your workspace
-    plot_path = os.path.join(base_dir, '..', 'plots', 'forecast_visualization.png')
+    outputs_dir = os.path.join(base_dir, '..', 'outputs')
+    os.makedirs(outputs_dir, exist_ok=True)
+    
+    plot_path = os.path.join(outputs_dir, 'forecast_visualization.png')
     plt.savefig(plot_path)
     print(f"✅ Chart saved successfully at: {plot_path}")
 
