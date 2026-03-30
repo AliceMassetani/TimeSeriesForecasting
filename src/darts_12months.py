@@ -61,11 +61,10 @@ def run_native_darts_tournament_12m():
 
     # --- 4. Models Arena ---
     # Chronos-2 requires: input_chunk_length + output_chunk_length <= len(train_series)
-    # Distribute available budget: 40% input (context), 60% output (direct forecast)
-    # Auto-regression handles the remaining prediction horizon beyond output_chunk_length
+    # We maximize output_chunk_length (up to 1024 limit) to minimize auto-regressive error compounding
     available_budget = len(train_series) - 1
-    chronos_output_len = min(512, int(available_budget * 0.6))
-    chronos_input_len = min(512, available_budget - chronos_output_len)
+    chronos_output_len = min(1024, int(available_budget * 0.6))
+    chronos_input_len = min(1024, available_budget - chronos_output_len)
     
     print(f"\n Chronos-2 Config: input_chunk={chronos_input_len}, output_chunk={chronos_output_len}")
     print(f" Auto-regressive steps needed: {max(0, prediction_length - chronos_output_len)}")

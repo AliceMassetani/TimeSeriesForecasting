@@ -55,8 +55,8 @@ def run_native_darts_tournament():
         "Prophet": Prophet(country_holidays='IT'),
         "Chronos-2": Chronos2Model(
             hub_model_name="amazon/chronos-2",
-            input_chunk_length=512, 
-            output_chunk_length=512 
+            input_chunk_length=1024, 
+            output_chunk_length=1024
         ) 
     }
 
