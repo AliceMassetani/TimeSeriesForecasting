@@ -3,102 +3,204 @@ import numpy as np
 import matplotlib.pyplot as plt
 import os
 import holidays
-from darts import TimeSeries
-from darts.models import Chronos2Model, Prophet, ARIMA
-from darts.utils.timeseries_generation import datetime_attribute_timeseries
-from sklearn.metrics import mean_absolute_error, mean_squared_error
 
-def run_model_tournament():
+from darts import TimeSeries, set_option
+from darts.models import Chronos2Model, Prophet, ARIMA
+from darts.metrics import mae, rmse, r2_score
+from darts.utils.missing_values import fill_missing_values
+
+
+def run_native_darts_tournament_12m():
     base_dir = os.path.dirname(os.path.abspath(__file__))
     data_path = os.path.join(base_dir, '..', 'datasets', 'Dati_processed.csv')
     outputs_dir = os.path.join(base_dir, '..', 'outputs')
     os.makedirs(outputs_dir, exist_ok=True)
 
-    # --- 1. Caricamento e Preparazione Dati ---
+    print("--- 1. Data Loading and Preparation (12-Month Horizon) ---")
     df = pd.read_csv(data_path)
     df['TimeStamp'] = pd.to_datetime(df['TimeStamp'])
-    df_resampled = df.set_index('TimeStamp').resample('3h').max().ffill().bfill().fillna(0).reset_index()
+    
+    # Data is already at 1h intervals (24 steps/day) — no resampling needed
+    df_resampled = df
 
-    # Aggiunta Festività Italiane
+    # Add Italian Holidays
     it_holidays = holidays.Italy()
     df_resampled['is_holiday'] = df_resampled['TimeStamp'].apply(lambda x: 1 if x in it_holidays else 0)
 
-    # --- 3. Definizione Target e Tutte le Covariate ---
+    # --- 2. Target Definition and Covariate Split ---
     target_col = 'InUseCapacity'
     
-    # Prendiamo TUTTE le colonne tranne il target e il tempo
-    # Questo include: DesiredCapacity, Errors, Utilization, ActualCapacity, is_holiday, hour, day_of_week
-    cov_cols = [col for col in df_resampled.columns if col not in [target_col, 'TimeStamp', 'item_id']]
+    # Strict separation to prevent data leakage
+    future_cols = ['hour', 'day_of_week', 'is_holiday']
+
+    past_cols = [col for col in df_resampled.columns if col not in [target_col, 'TimeStamp', 'item_id'] and col not in future_cols]
     
-    print(f"Target: {target_col}")
-    print(f"Covariate Totali ({len(cov_cols)}): {cov_cols}")
+    print(f" Resampling: 1h intervals (24 steps/day)")
+    print(f" Total resampled steps: {len(df_resampled)}")
+    print(f" Target: {target_col}")
+    print(f" Future Covariates ({len(future_cols)}): {future_cols}")
+    print(f" Past Covariates ({len(past_cols)}): {past_cols}")
 
-    # Creazione Serie Darts
-    series = TimeSeries.from_dataframe(df_resampled, time_col='TimeStamp', value_cols=target_col)
-    covariates = TimeSeries.from_dataframe(df_resampled, time_col='TimeStamp', value_cols=cov_cols)
+    # --- 3. TimeSeries Creation and Data Imputation (Darts Native) ---
+    series = fill_missing_values(TimeSeries.from_dataframe(df_resampled, time_col='TimeStamp', value_cols=target_col))
+    future_cov = fill_missing_values(TimeSeries.from_dataframe(df_resampled, time_col='TimeStamp', value_cols=future_cols))
+    past_cov = fill_missing_values(TimeSeries.from_dataframe(df_resampled, time_col='TimeStamp', value_cols=past_cols))
 
-    # Split 12 mesi (2920 step)
-    prediction_length = 2920
+    # Split: 12 months = 365 days * 24 steps/day = 8760 steps
+    prediction_length = 365 * 24  # 8760 steps
+    
+    # Safety check: ensure enough training data
+    if len(series) <= prediction_length:
+        print(f" WARNING: Series length ({len(series)}) <= prediction_length ({prediction_length}).")
+        print(f" Adjusting prediction_length to use 20% of data for training.")
+        prediction_length = int(len(series) * 0.8)
+    
     train_series, test_series = series[:-prediction_length], series[-prediction_length:]
-    y_true = test_series.values().flatten()
+    print(f"\n Training steps: {len(train_series)}")
+    print(f" Test/Prediction steps: {len(test_series)} ({prediction_length // 24} days)")
 
-    # --- 4. Arena dei Modelli ---
+    # --- 4. Models Arena ---
+    # Chronos-2 requires: input_chunk_length + output_chunk_length <= len(train_series)
+    # Distribute available budget: 40% input (context), 60% output (direct forecast)
+    # Auto-regression handles the remaining prediction horizon beyond output_chunk_length
+    available_budget = len(train_series) - 1
+    chronos_output_len = min(512, int(available_budget * 0.6))
+    chronos_input_len = min(512, available_budget - chronos_output_len)
+    
+    print(f"\n Chronos-2 Config: input_chunk={chronos_input_len}, output_chunk={chronos_output_len}")
+    print(f" Auto-regressive steps needed: {max(0, prediction_length - chronos_output_len)}")
+    
     models = {
         "ARIMA": ARIMA(), 
         "Prophet": Prophet(country_holidays='IT'),
         "Chronos-2": Chronos2Model(
-            input_chunk_length=min(600, len(train_series) - 120 - 1),
-            output_chunk_length=120 
+            input_chunk_length=chronos_input_len,
+            output_chunk_length=chronos_output_len
         ) 
     }
 
     results = {}
 
-    # --- 3. Ciclo di Training e Prediction ---
+    # --- 5. Training, Prediction, Backtesting ---
     for name, model in models.items():
-        print(f"\nRunning: {name}...")
+        print(f"\n Running: {name}...")
         
-        # Passiamo le covariate a chi le supporta
-        kwargs = {'future_covariates': covariates} if model.supports_future_covariates else {}
+        # Dynamic handling of model-supported covariates
+        fit_kwargs = {}
+        predict_kwargs = {}
+        
+        if model.supports_future_covariates:
+            fit_kwargs['future_covariates'] = future_cov
+            predict_kwargs['future_covariates'] = future_cov
+            
+        if model.supports_past_covariates:
+            fit_kwargs['past_covariates'] = past_cov
+            predict_kwargs['past_covariates'] = past_cov
 
-        model.fit(train_series, **kwargs)
+        # Model Training
+        model.fit(train_series, **fit_kwargs)
         
-        # Prediction
+        # Prediction (Chronos-2 auto-regresses beyond output_chunk_length)
         if getattr(model, "is_probabilistic", False):
-            forecast = model.predict(n=prediction_length, num_samples=100, **kwargs)
-            p50_series = forecast.quantile(0.5)
+            forecast = model.predict(n=prediction_length, num_samples=100, **predict_kwargs).quantile(0.5)
         else:
-            p50_series = model.predict(n=prediction_length, **kwargs)
+            forecast = model.predict(n=prediction_length, **predict_kwargs)
         
-        y_pred = p50_series.values().flatten()
-        mae = mean_absolute_error(y_true, y_pred)
-        res_rmse = np.sqrt(mean_squared_error(y_true, y_pred))
-        results[name] = {"p50_series": p50_series, "mae": mae, "rmse": res_rmse}
-        print(f"{name} MAE: {mae:.2f} | RMSE: {res_rmse:.2f}")
+        # Calculate Comprehensive Metrics
+        mae_val = mae(test_series, forecast)
+        rmse_val = rmse(test_series, forecast)
+        r2_val = r2_score(test_series, forecast)
+        
+        print(f" {name} Results:")
+        print(f"   -> MAE:   {mae_val:.2f}")
+        print(f"   -> RMSE:  {rmse_val:.2f}")
+        print(f"   -> R²:    {r2_val:.2f}")
 
-    # --- 4. Generazione Grafici ---
-    # Grafico 1: Full Benchmark (12 mesi)
-    plt.figure(figsize=(18, 7))
-    test_series.plot(label='Dati Reali', color='green', linewidth=2)
-    for name, data in results.items():
-        data["p50_series"].plot(label=f'{name} (MAE: {data["mae"]:.2f})')
-    plt.title('Benchmark 12 Mesi - Autoscaling Predittivo')
-    plt.legend()
-    plt.savefig(os.path.join(outputs_dir, 'darts_benchmark_full_12m.png'))
+        # Historical Forecasts (Darts Native Backtesting) - Prophet only
+        # retrain=True is required for local models like Prophet
+        if name in ["Prophet"]: 
+            backtest_days = 30  # backtest over last 30 days of training set
+            backtest_steps = backtest_days * 24  # 720 steps at 24 steps/day
+            horizon_steps = 24  # 1-day forecast horizon (24 steps = 24h at 1h intervals)
+            stride_steps = 24   # stride of 1 day
+            
+            if len(train_series) > backtest_steps + horizon_steps:
+                print(f"   Starting Historical Backtesting for {name} (last {backtest_days} days of train set)...")
+                backtest_forecast = model.historical_forecasts(
+                    series=train_series,
+                    future_covariates=future_cov if model.supports_future_covariates else None,
+                    past_covariates=past_cov if model.supports_past_covariates else None,
+                    start=len(train_series) - backtest_steps,
+                    forecast_horizon=horizon_steps,
+                    stride=stride_steps,
+                    retrain=True,
+                    verbose=False
+                )
+                backtest_mae = mae(train_series, backtest_forecast)
+                print(f"    Backtest MAE ({name}): {backtest_mae:.2f}")
+            else:
+                print(f"   Skipping backtesting for {name}: insufficient training data.")
 
-    # Grafico 2: ZOOM (Ultimi 30 giorni)
-    plt.figure(figsize=(18, 7))
-    # Zoomiamo sugli ultimi 240 step (30 giorni * 8 campioni/giorno)
-    zoom_steps = 240
-    test_series[-zoom_steps:].plot(label='Dati Reali', color='green', linewidth=3)
+        # Store all metrics
+        results[name] = {
+            "forecast": forecast, 
+            "mae": mae_val, 
+            "rmse": rmse_val,
+            "r2": r2_val
+        }
+
+    # --- 6. Benchmark Plots Generation ---
+    print("\n--- 6. Generating Final Benchmark Plots ---")
+    
+    set_option("plotting.use_darts_style", True)
+    # Plot 1: Full 12-Month Benchmark
+    plt.figure(figsize=(20, 8))
+    test_series.plot(label='Actual Data', color='green', linewidth=2)
     for name, data in results.items():
-        data["p50_series"][-zoom_steps:].plot(label=f'{name}', linewidth=2)
-    plt.title('Dettaglio Mensile (Zoom ultimi 30 giorni)')
+        label_str = f'{name} (MAE: {data["mae"]:.2f}, R²: {data["r2"]:.2f})'
+        data["forecast"].plot(label=label_str)
+    plt.title('12-Month Benchmark - Predictive Autoscaling (1h resolution)')
     plt.legend()
+    plt.savefig(os.path.join(outputs_dir, 'darts_native_benchmark_12m_full.png'))
+    plt.close()
+
+    # Plot 2: Zoomed View (Last 30 Days)
+    plt.figure(figsize=(20, 8))
+    zoom_steps = 30 * 24  # 30 days * 24 steps/day = 720 steps
+    test_series[-zoom_steps:].plot(label='Actual Data', color='green', linewidth=3)
+    for name, data in results.items():
+        data["forecast"][-zoom_steps:].plot(label=name, linewidth=2)
+    plt.title('Monthly Detail (Zoom on Last 30 Days)')
     plt.grid(True, alpha=0.3)
-    plt.savefig(os.path.join(outputs_dir, 'darts_benchmark_zoom_12m.png'))
+    plt.legend()
+    plt.savefig(os.path.join(outputs_dir, 'darts_native_benchmark_12m_zoom.png'))
+    plt.close()
 
-    print("\nGrafici salvati in /outputs!")
+    # Plot 3: Quarterly View (Last 90 Days)
+    plt.figure(figsize=(20, 8))
+    zoom_q = 90 * 24  # 90 days * 24 steps/day = 2160 steps
+    test_series[-zoom_q:].plot(label='Actual Data', color='green', linewidth=3)
+    for name, data in results.items():
+        data["forecast"][-zoom_q:].plot(label=name, linewidth=2)
+    plt.title('Quarterly Detail (Zoom on Last 90 Days)')
+    plt.grid(True, alpha=0.3)
+    plt.legend()
+    plt.savefig(os.path.join(outputs_dir, 'darts_native_benchmark_12m_quarterly.png'))
+    plt.close()
+
+    # --- Save Metrics Summary to CSV ---
+    metrics_summary = pd.DataFrame({
+        name: {
+            "MAE": data["mae"],
+            "RMSE": data["rmse"],
+            "R-squared": data["r2"]
+        } for name, data in results.items()
+    }).T
+    metrics_summary.to_csv(os.path.join(outputs_dir, 'darts_metrics_summary_12m.csv'))
+
+    print("\n--- Final Metrics Summary (12-Month Forecast) ---")
+    print(metrics_summary.to_string())
+    print(f"\n 12-Month Darts analysis completed! Check the /outputs folder.")
 
 if __name__ == "__main__":
-    run_model_tournament()
+    run_native_darts_tournament_12m()
