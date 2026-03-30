@@ -1,0 +1,15 @@
+--- Hyperparameter Search Results ---
+
+ARIMA:
+Best Parameters: {'p': 2, 'd': 0, 'q': 0}
+Best RMSE Score (Optimized): 17.2082
+Best MAE Score: 14.4973
+Best MSE Score: 317.0975
+Best R2 Score: -8.3450
+
+Prophet:
+Best Parameters: {'country_holidays': 'IT', 'seasonality_prior_scale': 1.0, 'changepoint_prior_scale': 0.001}
+Best RMSE Score (Optimized): 9.0179
+Best MAE Score: 8.1245
+Best MSE Score: 85.4698
+Best R2 Score: -8.6567

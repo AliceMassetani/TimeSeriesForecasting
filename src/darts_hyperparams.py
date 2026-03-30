@@ -2,15 +2,25 @@ import pandas as pd
 import numpy as np
 import os
 import holidays
+import logging
+
+# Suppress Prophet's noisy cmdstanpy logger from spamming on exit
+cmdstanpy_logger = logging.getLogger('cmdstanpy')
+cmdstanpy_logger.addHandler(logging.NullHandler())
+cmdstanpy_logger.propagate = False
+cmdstanpy_logger.setLevel(logging.CRITICAL)
 
 from darts import TimeSeries, set_option
 from darts.models import Prophet, ARIMA
-from darts.metrics import mae
+from darts.metrics import mae, mse, rmse, r2_score
 from darts.utils.missing_values import fill_missing_values
 
 def run_hyperparameter_search():
     base_dir = os.path.dirname(os.path.abspath(__file__))
     data_path = os.path.join(base_dir, '..', 'datasets', 'Dati_processed.csv')
+    outputs_dir = os.path.join(base_dir, '..', 'outputs')
+    os.makedirs(outputs_dir, exist_ok=True)
+    report_path = os.path.join(outputs_dir, 'hyperparameter_results.txt')
     
     print("--- 1. Data Loading and Preparation ---")
     df = pd.read_csv(data_path)
@@ -54,15 +64,30 @@ def run_hyperparameter_search():
     # Darts gridsearch evaluates combinations using a rolling window from the `start` point
     best_arima, best_params_arima, min_error_arima = ARIMA.gridsearch(
         parameters=parameters_arima,
-        series=series,
-        start=len(train_series),           # Where validation begins
-        forecast_horizon=24,               # Test 24-hours ahead repetitively
-        metric=mae,
-        n_jobs=-1,                         # Use all available CPU cores for speed
+        series=train_series,
+        start=len(train_series)-prediction_length,
+        forecast_horizon=24,
+        stride=24,
+        metric=rmse,
+        n_jobs=-1,
         verbose=True
     )
-    print(f"  🏆 Best ARIMA Parameters: {best_params_arima}")
-    print(f"  🏆 Best ARIMA MAE Score: {min_error_arima:.4f}")
+    print(f"   Best ARIMA Parameters: {best_params_arima}")
+    print(f"   Best ARIMA RMSE Score: {min_error_arima:.4f}")
+    
+    # Calculate additional metrics for the winning model
+    other_metrics_arima = best_arima.backtest(
+        series=train_series,
+        start=len(train_series)-prediction_length,
+        forecast_horizon=24,
+        stride=24,
+        metric=[mae, mse, r2_score],
+        verbose=False
+    )
+    mae_arima, mse_arima, r2_arima = other_metrics_arima
+    print(f"   Best ARIMA MAE Score: {mae_arima:.4f}")
+    print(f"   Best ARIMA MSE Score: {mse_arima:.4f}")
+    print(f"   Best ARIMA R2 Score: {r2_arima:.4f}")
 
     # ==========================================
     # --- 3. PROPHET Gridsearch ---
@@ -77,18 +102,51 @@ def run_hyperparameter_search():
     print(f" Evaluating Prophet parameter combinations...")
     best_prophet, best_params_prophet, min_error_prophet = Prophet.gridsearch(
         parameters=parameters_prophet,
-        series=series,
-        future_covariates=future_cov,      # Only passing future_cov since Prophet supports it
-        start=len(train_series),
+        series=train_series,
+        future_covariates=future_cov,
+        start=len(train_series)-prediction_length,
         forecast_horizon=24,
-        metric=mae,
+        stride=24,
+        metric=rmse,
         n_jobs=-1,
         verbose=True
     )
-    print(f"  🏆 Best Prophet Parameters: {best_params_prophet}")
-    print(f"  🏆 Best Prophet MAE Score: {min_error_prophet:.4f}")
+    print(f"   Best Prophet Parameters: {best_params_prophet}")
+    print(f"   Best Prophet RMSE Score: {min_error_prophet:.4f}")
+    
+    # Calculate additional metrics for the winning model
+    other_metrics_prophet = best_prophet.backtest(
+        series=train_series,
+        future_covariates=future_cov,
+        start=len(train_series)-prediction_length,
+        forecast_horizon=24,
+        stride=24,
+        metric=[mae, mse, r2_score],
+        verbose=False
+    )
+    mae_prophet, mse_prophet, r2_prophet = other_metrics_prophet
+    print(f"   Best Prophet MAE Score: {mae_prophet:.4f}")
+    print(f"   Best Prophet MSE Score: {mse_prophet:.4f}")
+    print(f"   Best Prophet R2 Score: {r2_prophet:.4f}")
 
-    print("\n🎉 Hyperparameter search finished! Update your models in the main scripts with these parameters.")
+    # Save metrics to txt file
+    with open(report_path, 'w', encoding='utf-8') as f:
+        f.write("--- Hyperparameter Search Results ---\n\n")
+        f.write("ARIMA:\n")
+        f.write(f"Best Parameters: {best_params_arima}\n")
+        f.write(f"Best RMSE Score (Optimized): {min_error_arima:.4f}\n")
+        f.write(f"Best MAE Score: {mae_arima:.4f}\n")
+        f.write(f"Best MSE Score: {mse_arima:.4f}\n")
+        f.write(f"Best R2 Score: {r2_arima:.4f}\n\n")
+        
+        f.write("Prophet:\n")
+        f.write(f"Best Parameters: {best_params_prophet}\n")
+        f.write(f"Best RMSE Score (Optimized): {min_error_prophet:.4f}\n")
+        f.write(f"Best MAE Score: {mae_prophet:.4f}\n")
+        f.write(f"Best MSE Score: {mse_prophet:.4f}\n")
+        f.write(f"Best R2 Score: {r2_prophet:.4f}\n")
+
+    print(f"\n Hyperparameter search finished! Results saved to {report_path}")
 
 if __name__ == "__main__":
     run_hyperparameter_search()
