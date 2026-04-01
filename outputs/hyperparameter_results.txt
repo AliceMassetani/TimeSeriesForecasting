@@ -1,22 +1,22 @@
 --- Hyperparameter Search Results ---
 
 ARIMA:
-Best Parameters: {'p': 2, 'd': 0, 'q': 0}
-Best RMSE Score (Optimized): 17.2082
-Best MAE Score: 14.4973
-Best MSE Score: 317.0975
-Best R2 Score: -8.3450
+Best Params: {'p': 2, 'd': 0, 'q': 0, 'seasonal_order': (0, 1, 0, 24)}
+RMSE: 10.8599
+MAE: 7.4544
+MSE: 188.1737
+R2: -3.1215
 
 Prophet:
-Best Parameters: {'country_holidays': 'IT', 'seasonality_prior_scale': 1.0, 'changepoint_prior_scale': 0.001}
-Best RMSE Score (Optimized): 9.0179
-Best MAE Score: 8.1245
-Best MSE Score: 85.4698
-Best R2 Score: -8.6567
+Best Params: {'country_holidays': 'IT', 'seasonality_prior_scale': 5.0, 'changepoint_prior_scale': 0.0005}
+RMSE: 8.9937
+MAE: 8.0974
+MSE: 85.1823
+R2: -8.6761
 
-Chronos: 
-Best Parameters: {'input_chunk_length': 1024, 'output_chunk_length': 1024}
-Best RMSE Score (Optimized): 2.1066
-Best MAE Score: 1.4639
-Best MSE Score: 4.4377
-Best R2 Score: 0.9881
+Chronos-2:
+Best Params: {'hub_model_name': 'amazon/chronos-2', 'input_chunk_length': 1024, 'output_chunk_length': 1024}
+RMSE: 2.0357
+MAE: 1.4293
+MSE: 4.8863
+R2: 0.9305
