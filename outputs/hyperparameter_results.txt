@@ -13,3 +13,10 @@ Best RMSE Score (Optimized): 9.0179
 Best MAE Score: 8.1245
 Best MSE Score: 85.4698
 Best R2 Score: -8.6567
+
+Chronos: 
+Best Parameters: {'input_chunk_length': 1024, 'output_chunk_length': 1024}
+Best RMSE Score (Optimized): 2.1066
+Best MAE Score: 1.4639
+Best MSE Score: 4.4377
+Best R2 Score: 0.9881
