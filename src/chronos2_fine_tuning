@@ -1,0 +1,393 @@
+"""
+Chronos-2 Fine-Tuning for AWS AppStream Predictive Autoscaler
+=============================================================
+Dataset   : ~15 months of hourly InUseCapacity readings
+Frequency : 1h
+Goal      : Predict the next 24h of capacity demand so AppStream
+            can pre-scale before usage spikes.
+
+Hyperparameter rationale (from gridsearch on the same dataset):
+  - input_chunk_length  = 1024  (~42 days lookback, best RMSE in gridsearch)
+  - output_chunk_length = 1024  (matched to input; model was searched with these)
+  - forecast horizon    = 24    (1 day ahead, matching operational autoscaler cadence)
+  - Chronos-2 achieved R²=0.93 / RMSE=2.04 vs ARIMA (R²=-3.12) and Prophet (R²=-8.68)
+
+Split strategy:
+  - Test  : last 720 steps (30 days) — held out, never touched during training
+  - Val   : 720 steps before test    — used for early stopping
+  - Train : everything else
+"""
+
+import os
+import gc
+import logging
+
+import holidays
+import matplotlib
+matplotlib.use("Agg")  # non-interactive backend — safe for scripts without a display
+import matplotlib.pyplot as plt
+import matplotlib.dates as mdates
+import pandas as pd
+import torch
+from pytorch_lightning.callbacks.early_stopping import EarlyStopping
+
+from darts import TimeSeries, concatenate
+from darts.metrics import mae, mse, rmse, r2_score
+from darts.models import Chronos2Model
+from darts.utils.callbacks import TFMProgressBar
+from darts.utils.missing_values import fill_missing_values
+
+# ---------------------------------------------------------------------------
+# Silence noisy loggers
+# ---------------------------------------------------------------------------
+logging.getLogger("cmdstanpy").setLevel(logging.CRITICAL)
+
+
+# ---------------------------------------------------------------------------
+# Paths
+# ---------------------------------------------------------------------------
+BASE_DIR    = os.path.dirname(os.path.abspath(__file__))
+DATA_PATH   = os.path.join(BASE_DIR, "..", "datasets", "Dati_processed.csv")
+OUTPUTS_DIR = os.path.join(BASE_DIR, "..", "outputs")
+MODEL_PATH  = os.path.join(OUTPUTS_DIR, "chronos2_finetuned.pt")
+os.makedirs(OUTPUTS_DIR, exist_ok=True)
+
+
+# ---------------------------------------------------------------------------
+# Constants — kept consistent with the gridsearch that produced the results
+# ---------------------------------------------------------------------------
+PREDICTION_LENGTH  = 30 * 24   # 720 h — size of val and test windows
+FORECAST_HORIZON   = 24        # 24 h — operational autoscaler cadence
+INPUT_CHUNK_LEN    = 1024      # best param from gridsearch
+OUTPUT_CHUNK_LEN   = 1024      # best param from gridsearch
+NUM_SAMPLES        = 1         # deterministic — consistent with gridsearch and benchmark scripts
+MAX_EPOCHS         = 50
+EARLY_STOP_PATIENCE = 5        # slightly more generous than the draft (was 3)
+LEARNING_RATE      = 1e-3
+
+
+# ---------------------------------------------------------------------------
+# 1. Data Loading and Preparation
+# ---------------------------------------------------------------------------
+print("--- 1. Data Loading and Preparation ---")
+
+df = pd.read_csv(DATA_PATH)
+df["TimeStamp"] = pd.to_datetime(df["TimeStamp"])
+
+# Italian public holidays flag
+it_holidays = holidays.Italy()
+df["is_holiday"] = df["TimeStamp"].apply(lambda x: 1 if x in it_holidays else 0)
+
+TARGET_COL  = "InUseCapacity"
+FUTURE_COLS = ["hour", "day_of_week", "is_holiday"]
+PAST_COLS   = [
+    col for col in df.columns
+    if col not in [TARGET_COL, "TimeStamp", "item_id"] and col not in FUTURE_COLS
+]
+
+# Build Darts TimeSeries objects
+series     = fill_missing_values(TimeSeries.from_dataframe(df, time_col="TimeStamp", value_cols=TARGET_COL))
+future_cov = fill_missing_values(TimeSeries.from_dataframe(df, time_col="TimeStamp", value_cols=FUTURE_COLS))
+past_cov   = fill_missing_values(TimeSeries.from_dataframe(df, time_col="TimeStamp", value_cols=PAST_COLS))
+
+total_len = len(series)
+print(f"  Total series length : {total_len} steps  (~{total_len / 24:.0f} days)")
+
+
+# ---------------------------------------------------------------------------
+# 2. Train / Validation / Test Split
+#
+#   |<--------- train ---------->|<------ val ------>|<--- test --->|
+#                                  2048 steps (min)     720 steps
+#
+# Test  : last 720 steps — held out, never touched during training.
+# Val   : must be >= input_chunk_length + output_chunk_length (2048) so Darts
+#         can form at least one complete validation sample. Passing a shorter
+#         val_series to fit() raises:
+#           ValueError: series too short, expected min 2048, received 720
+# Train : everything before val — ~8431 steps (~351 days), well above 2048.
+# ---------------------------------------------------------------------------
+print("\n--- 2. Train / Validation / Test Split ---")
+
+MIN_VAL_LEN  = INPUT_CHUNK_LEN + OUTPUT_CHUNK_LEN   # 2048 — Darts hard minimum
+test_start   = total_len - PREDICTION_LENGTH         # index where test begins
+val_start    = test_start - MIN_VAL_LEN              # val must be at least 2048
+
+train_series = series[:val_start]
+val_series   = series[val_start:test_start]
+test_series  = series[test_start:]
+
+# Covariates aligned to each slice
+train_future = future_cov[:val_start]
+val_future   = future_cov[val_start:test_start]
+test_future  = future_cov[test_start:]
+
+train_past   = past_cov[:val_start]
+val_past     = past_cov[val_start:test_start]
+
+print(f"  Train : {len(train_series)} steps  (~{len(train_series) // 24} days)")
+print(f"  Val   : {len(val_series)} steps  (~{len(val_series) // 24} days)  [min required: {MIN_VAL_LEN}]")
+print(f"  Test  : {len(test_series)} steps  (~{len(test_series) // 24} days)")
+
+assert len(train_series) >= MIN_VAL_LEN, (
+    f"Training set ({len(train_series)} steps) is shorter than the minimum "
+    f"required ({MIN_VAL_LEN}). Use more data or reduce INPUT_CHUNK_LEN."
+)
+
+
+# ---------------------------------------------------------------------------
+# 3. Callbacks
+# ---------------------------------------------------------------------------
+early_stopper = EarlyStopping(
+    monitor="val_loss",
+    patience=EARLY_STOP_PATIENCE,
+    min_delta=0.001,
+    mode="min",
+)
+
+progress_bar = TFMProgressBar(enable_train_bar_only=True)
+
+
+# ---------------------------------------------------------------------------
+# 4. Model Initialisation
+#
+# Fine-tuning strategy: unfreeze only the output patch embedding layer.
+# This is the lightest possible adaptation — it adjusts the model's output
+# projection to the specific scale and dynamics of InUseCapacity data while
+# keeping the pretrained backbone frozen and avoiding overfitting on ~15 months
+# of data.
+# ---------------------------------------------------------------------------
+print("\n--- 4. Initialising Chronos-2 for Fine-Tuning ---")
+
+model = Chronos2Model(
+    input_chunk_length=INPUT_CHUNK_LEN,
+    output_chunk_length=OUTPUT_CHUNK_LEN,
+    hub_model_name="amazon/chronos-2",
+    enable_finetuning={"unfreeze": ["output_patch_embedding*"]},
+    optimizer_kwargs={"lr": LEARNING_RATE},
+    batch_size=32,
+    pl_trainer_kwargs={
+        "callbacks": [early_stopper, progress_bar],
+        "gradient_clip_val": 1.0,
+        "max_epochs": MAX_EPOCHS,
+        "accelerator": "gpu" if torch.cuda.is_available() else "cpu",
+        "limit_train_batches": 50,
+        "limit_val_batches": 10,
+    },
+)
+
+print(f"  Device : {'GPU' if torch.cuda.is_available() else 'CPU'}")
+print(f"  Input chunk length  : {INPUT_CHUNK_LEN} steps (~{INPUT_CHUNK_LEN / 24:.0f} days)")
+print(f"  Output chunk length : {OUTPUT_CHUNK_LEN} steps")
+print(f"  Max epochs          : {MAX_EPOCHS}  (early stopping patience={EARLY_STOP_PATIENCE})")
+
+
+# ---------------------------------------------------------------------------
+# 5. Fine-Tuning
+# ---------------------------------------------------------------------------
+print("\n--- 5. Fine-Tuning ---")
+
+model.fit(
+    series=train_series,
+    past_covariates=train_past,
+    future_covariates=train_future,
+    val_series=val_series,
+    val_past_covariates=val_past,
+    val_future_covariates=val_future,
+    # Limit training samples to the most recent 2000 per series — avoids
+    # generating thousands of overlapping windows from a long series, which
+    # is the main cause of slow epochs. Darts takes the most recent samples
+    # so recent patterns (more relevant for autoscaling) are prioritised.
+    max_samples_per_ts=2000,
+    # num_workers for the DataLoader — num_loader_workers was removed in
+    # recent Darts; the correct API is dataloader_kwargs.
+    dataloader_kwargs={"num_workers": 8, "persistent_workers": True},
+)
+
+
+# ---------------------------------------------------------------------------
+# 6. Evaluation on the Held-Out Test Set
+#    Backtest over the 30-day test window with the same stride used in
+#    gridsearch (stride=24, horizon=24) so results are directly comparable.
+# ---------------------------------------------------------------------------
+print("\n--- 6. Evaluation on Test Set ---")
+
+# Convert integer index to timestamp so Darts uses the full series history
+# as context. Passing an integer causes Darts to slice internally and the
+# model only sees 720 steps — less than input_chunk_length + output_chunk_length = 2048.
+test_start_timestamp = series.time_index[test_start]
+
+backtest_metrics = model.backtest(
+    series=series,
+    past_covariates=past_cov,
+    future_covariates=future_cov,
+    start=test_start_timestamp,
+    forecast_horizon=FORECAST_HORIZON,
+    stride=FORECAST_HORIZON,
+    metric=[rmse, mae, mse, r2_score],
+    num_samples=NUM_SAMPLES,
+    verbose=False,
+)
+
+rmse_val, mae_val, mse_val, r2_val = backtest_metrics
+
+print(f"  Test RMSE : {rmse_val:.4f}")
+print(f"  Test MAE  : {mae_val:.4f}")
+print(f"  Test MSE  : {mse_val:.4f}")
+print(f"  Test R²   : {r2_val:.4f}")
+
+# Write evaluation report
+report_path = os.path.join(OUTPUTS_DIR, "finetuning_evaluation.txt")
+with open(report_path, "w", encoding="utf-8") as f:
+    f.write("--- Chronos-2 Fine-Tuning Evaluation (Test Set) ---\n\n")
+    f.write(f"Model        : amazon/chronos-2 (output head fine-tuned)\n")
+    f.write(f"Dataset      : {total_len} hourly steps (~{total_len / 24:.0f} days)\n")
+    f.write(f"Test window  : {PREDICTION_LENGTH} steps (last 30 days)\n")
+    f.write(f"Horizon      : {FORECAST_HORIZON} steps (24 h)\n\n")
+    f.write(f"RMSE  : {rmse_val:.4f}\n")
+    f.write(f"MAE   : {mae_val:.4f}\n")
+    f.write(f"MSE   : {mse_val:.4f}\n")
+    f.write(f"R²    : {r2_val:.4f}\n")
+print(f"  Evaluation report saved to {report_path}")
+
+
+# ---------------------------------------------------------------------------
+# 7. Operational Forecast — next 24h for the autoscaler
+#    Produces 100 probabilistic trajectories so the autoscaler can target
+#    Single point forecast — consistent with gridsearch and benchmark scripts.
+# ---------------------------------------------------------------------------
+print("\n--- 7. Generating 24h Operational Forecast ---")
+
+forecast = model.predict(
+    n=FORECAST_HORIZON,
+    series=series,
+    past_covariates=past_cov,
+    future_covariates=future_cov,
+)
+
+df_forecast = forecast.pd_dataframe().rename(columns={TARGET_COL: "InUseCapacity_forecast"})
+
+forecast_csv = os.path.join(OUTPUTS_DIR, "forecast_next_24h.csv")
+df_forecast.to_csv(forecast_csv)
+print(f"  24h forecast saved to {forecast_csv}")
+
+
+# ---------------------------------------------------------------------------
+# 8. Plots
+# ---------------------------------------------------------------------------
+print("\n--- 8. Generating Plots ---")
+
+PLOT_STYLE = {
+    "actual":   {"color": "#2C3E50", "linewidth": 1.5, "label": "Actual"},
+    "median":   {"color": "#2980B9", "linewidth": 2.0, "label": "Forecast"},
+}
+
+def save_fig(fig, name):
+    path = os.path.join(OUTPUTS_DIR, name)
+    fig.savefig(path, dpi=150, bbox_inches="tight")
+    plt.close(fig)
+    print(f"  Plot saved to {path}")
+
+
+# --- Plot A: Backtest on test set (last 30 days) ---
+# test_start_timestamp already defined above in section 6.
+backtest_forecasts = model.historical_forecasts(
+    series=series,
+    past_covariates=past_cov,
+    future_covariates=future_cov,
+    start=test_start_timestamp,
+    forecast_horizon=FORECAST_HORIZON,
+    stride=FORECAST_HORIZON,
+    num_samples=NUM_SAMPLES,
+    retrain=False,
+    verbose=False,
+)
+
+# Concatenate all 30-day rolling forecasts into one continuous series
+forecast_concat = concatenate(backtest_forecasts)
+
+# Extract point forecast
+p50 = forecast_concat.pd_series()
+actual_test = test_series.pd_series()
+
+# Show 7 days of context before test window for visual continuity
+context_steps = 7 * 24
+context = series[test_start - context_steps : test_start + PREDICTION_LENGTH].pd_series()
+
+fig, ax = plt.subplots(figsize=(16, 5))
+ax.plot(context.index, context.values, **PLOT_STYLE["actual"])
+ax.plot(p50.index, p50.values, **PLOT_STYLE["median"])
+ax.axvline(x=actual_test.index[0], color="gray", linestyle=":", linewidth=1.2, label="Test window start")
+ax.set_title("Backtest — Test Set (last 30 days) with 7-day context", fontsize=13, fontweight="bold")
+ax.set_xlabel("Time")
+ax.set_ylabel("InUseCapacity")
+ax.xaxis.set_major_formatter(mdates.DateFormatter("%b %d"))
+ax.xaxis.set_major_locator(mdates.WeekdayLocator(interval=1))
+plt.setp(ax.xaxis.get_majorticklabels(), rotation=30, ha="right")
+ax.legend(loc="upper left", fontsize=9)
+ax.grid(axis="y", linestyle="--", alpha=0.4)
+fig.tight_layout()
+save_fig(fig, "plot_backtest_test_set.png")
+
+
+# --- Plot B: Operational 24h forecast ---
+forecast_series = forecast.pd_series()
+
+# Show last 72h of actual data as context
+context_72h = series[-72:].pd_series()
+
+fig, ax = plt.subplots(figsize=(14, 5))
+ax.plot(context_72h.index, context_72h.values, **PLOT_STYLE["actual"])
+ax.plot(forecast_series.index, forecast_series.values, **PLOT_STYLE["median"])
+ax.axvline(x=forecast_series.index[0], color="gray", linestyle=":", linewidth=1.2, label="Forecast start")
+ax.set_title("Operational Forecast — Next 24h (with 72h context)", fontsize=13, fontweight="bold")
+ax.set_xlabel("Time")
+ax.set_ylabel("InUseCapacity")
+ax.xaxis.set_major_formatter(mdates.DateFormatter("%b %d %H:%M"))
+ax.xaxis.set_major_locator(mdates.HourLocator(interval=6))
+plt.setp(ax.xaxis.get_majorticklabels(), rotation=30, ha="right")
+ax.legend(loc="upper left", fontsize=9)
+ax.grid(axis="y", linestyle="--", alpha=0.4)
+fig.tight_layout()
+save_fig(fig, "plot_forecast_next_24h.png")
+
+
+# --- Plot C: Metric summary bar chart (fine-tuned vs gridsearch baseline) ---
+metrics_labels  = ["RMSE", "MAE", "R²"]
+gridsearch_vals = [2.0357, 1.4293, 0.9305]   # from hyperparameter_results.txt
+finetuned_vals  = [rmse_val, mae_val, r2_val]
+
+x = range(len(metrics_labels))
+fig, ax = plt.subplots(figsize=(8, 5))
+bars1 = ax.bar([i - 0.2 for i in x], gridsearch_vals, width=0.35, label="Gridsearch baseline", color="#95A5A6")
+bars2 = ax.bar([i + 0.2 for i in x], finetuned_vals,  width=0.35, label="Fine-tuned model",    color="#2980B9")
+for bar in bars1 + bars2:
+    ax.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + 0.02,
+            f"{bar.get_height():.3f}", ha="center", va="bottom", fontsize=9)
+ax.set_xticks(list(x))
+ax.set_xticklabels(metrics_labels, fontsize=11)
+ax.set_title("Fine-Tuned vs Gridsearch Baseline — Test Metrics", fontsize=13, fontweight="bold")
+ax.legend(fontsize=9)
+ax.grid(axis="y", linestyle="--", alpha=0.4)
+fig.tight_layout()
+save_fig(fig, "plot_metrics_comparison.png")
+
+
+# ---------------------------------------------------------------------------
+# 9. Save Model
+# ---------------------------------------------------------------------------
+print("\n--- 9. Saving Fine-Tuned Model ---")
+
+model.save(MODEL_PATH)
+print(f"  Model weights saved to {MODEL_PATH}")
+
+
+# ---------------------------------------------------------------------------
+# 10. Cleanup
+# ---------------------------------------------------------------------------
+print("\n--- 10. Cleanup ---")
+gc.collect()
+if torch.cuda.is_available():
+    torch.cuda.empty_cache()
+
+print("\n✓ Fine-tuning pipeline completed successfully.")
