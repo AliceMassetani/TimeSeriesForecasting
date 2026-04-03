@@ -68,11 +68,11 @@ SEED                = 42
 FORECAST_HORIZON    = 24
 INPUT_CHUNK_LEN     = 1024
 OUTPUT_CHUNK_LEN    = 24            # FIX: era 1024, deve matchare FORECAST_HORIZON
-PREDICTION_LENGTH   = OUTPUT_CHUNK_LEN * 42  # ~42 giorni di test (1008 ore)
-NUM_SAMPLES         = 10
+PREDICTION_LENGTH   = 24 * 42  # ~42 giorni di test (1008 ore)
+NUM_SAMPLES         = 100
 MAX_EPOCHS          = 50
 EARLY_STOP_PATIENCE = 5
-LEARNING_RATE       = 1e-4          # FIX: era 2e-3, troppo aggressivo
+LEARNING_RATE       = 5e-5          # FIX: era 2e-3, troppo aggressivo
 BATCH_SIZE          = 16            # FIX: era 64
 MAX_SAMPLES_PER_TS  = 1000
 NUM_WORKERS         = 4
@@ -304,7 +304,8 @@ model = ProbabilisticChronos2Model(
     # Full fine-tuning: sblocca TUTTI i layer.
     # Una volta letto chronos2_layer_names.txt puoi passare a unfreezing selettivo, es:
     # enable_finetuning={"unfreeze": ["nome_layer_specifico*"]},
-    enable_finetuning=True,
+    # enable_finetuning=True,
+    enable_finetuning={"unfreeze": ["output_patch_embedding*"]},
     optimizer_kwargs={"lr": LEARNING_RATE},
     batch_size=BATCH_SIZE,
     pl_trainer_kwargs={
