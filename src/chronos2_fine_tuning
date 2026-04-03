@@ -1,10 +1,17 @@
 """
-Chronos-2 Fine-Tuning for AWS AppStream Predictive Autoscaler
-=============================================================
+Chronos-2 Fine-Tuning for AWS AppStream Predictive Autoscaler (v3)
+==================================================================
 Dataset   : ~15 months of hourly InUseCapacity readings
 Frequency : 1h
-Goal      : Predict the next 24h of capacity demand so AppStream
-            can pre-scale before usage spikes.
+Goal      : Predict the next 24h of capacity demand
+
+Key changes from v1:
+  - OUTPUT_CHUNK_LEN: 1024 → 24 (match FORECAST_HORIZON)
+  - Scaler on target: REMOVED (Chronos-2 does internal mean-scaling + arcsinh)
+  - Covariates: kept future, added is_business_hours, auto-skip empty past
+  - Fine-tuning: enable_finetuning=True (full), LR 2e-3 → 1e-4
+  - BATCH_SIZE: 64 → 16
+  - Added layer name dump for future selective unfreezing
 """
 
 import os
@@ -15,13 +22,13 @@ import holidays
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
-import matplotlib.dates as mdates
+import numpy as np
 import pandas as pd
 import torch
 import pytorch_lightning as pl
 from pytorch_lightning.callbacks.early_stopping import EarlyStopping
 
-from darts import TimeSeries, concatenate
+from darts import TimeSeries, concatenate, set_option
 from darts.dataprocessing.transformers import Scaler
 from darts.metrics import mae, mse, rmse, r2_score
 from darts.models import Chronos2Model
@@ -30,15 +37,13 @@ from darts.utils.missing_values import fill_missing_values
 
 logging.getLogger("cmdstanpy").setLevel(logging.CRITICAL)
 
+
 # --- FIX FOR DARTS LIBRARY BUG ---
-# Darts incorrectly flags Chronos-2 as deterministic. The internal pipeline 
-# strictly checks the `supports_probabilistic_prediction` property before 
-# allowing num_samples > 1. By overriding it, we bypass the crash.
 class ProbabilisticChronos2Model(Chronos2Model):
     @property
     def supports_probabilistic_prediction(self) -> bool:
         return True
-    
+
     @property
     def is_probabilistic(self) -> bool:
         return True
@@ -47,105 +52,164 @@ class ProbabilisticChronos2Model(Chronos2Model):
     def _is_probabilistic(self) -> bool:
         return True
 
+
 # ---------------------------------------------------------------------------
 # Paths
 # ---------------------------------------------------------------------------
 BASE_DIR    = os.path.dirname(os.path.abspath(__file__))
 DATA_PATH   = os.path.join(BASE_DIR, "..", "datasets", "Dati_processed.csv")
 OUTPUTS_DIR = os.path.join(BASE_DIR, "..", "outputs")
-MODEL_PATH  = os.path.join(OUTPUTS_DIR, "chronos2_finetuned.pt")
 os.makedirs(OUTPUTS_DIR, exist_ok=True)
 
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
-SEED               = 42
-PREDICTION_LENGTH  = 1024           # Power of 2
-FORECAST_HORIZON   = 24
-INPUT_CHUNK_LEN    = 1024           # Power of 2
-OUTPUT_CHUNK_LEN   = 1024           # Power of 2
-NUM_SAMPLES        = 10             # Probabilistic quantiles
-MAX_EPOCHS         = 50
+SEED                = 42
+FORECAST_HORIZON    = 24
+INPUT_CHUNK_LEN     = 1024
+OUTPUT_CHUNK_LEN    = 24            # FIX: era 1024, deve matchare FORECAST_HORIZON
+PREDICTION_LENGTH   = OUTPUT_CHUNK_LEN * 42  # ~42 giorni di test (1008 ore)
+NUM_SAMPLES         = 10
+MAX_EPOCHS          = 50
 EARLY_STOP_PATIENCE = 5
-LEARNING_RATE      = 2e-3           # Higher learning rate for fine-tuning
-BATCH_SIZE         = 64             # Power of 2
-MAX_SAMPLES_PER_TS = 1000
-NUM_WORKERS        = 4
+LEARNING_RATE       = 1e-4          # FIX: era 2e-3, troppo aggressivo
+BATCH_SIZE          = 16            # FIX: era 64
+MAX_SAMPLES_PER_TS  = 1000
+NUM_WORKERS         = 4
 
 pl.seed_everything(SEED, workers=True)
 
 # ---------------------------------------------------------------------------
-# 1. Data Loading, Future Generation, Splitting & Scaling
+# 1. Data Loading & Feature Engineering
 # ---------------------------------------------------------------------------
-print("--- 1. Data Preparation & Scaling ---")
+print("=" * 60)
+print("1. DATA LOADING & FEATURE ENGINEERING")
+print("=" * 60)
+
 df = pd.read_csv(DATA_PATH)
 df["TimeStamp"] = pd.to_datetime(df["TimeStamp"])
+TARGET = "InUseCapacity"
 
-df["hour"] = df["TimeStamp"].dt.hour
-df["day_of_week"] = df["TimeStamp"].dt.dayofweek
-
+# Future covariates: calendario
+df["hour"]         = df["TimeStamp"].dt.hour
+df["day_of_week"]  = df["TimeStamp"].dt.dayofweek
 it_holidays = holidays.Italy()
-df["is_holiday"] = df["TimeStamp"].apply(lambda x: 1 if x in it_holidays else 0)
+df["is_holiday"]   = df["TimeStamp"].apply(lambda x: 1 if x in it_holidays else 0)
 
-# --- GENERATING THE FUTURE CALENDAR ---
+# Past covariates: verifica se ci sono colonne reali
+EXCLUDED_COLS = {
+    TARGET, "TimeStamp", "item_id",
+    "hour", "day_of_week", "is_holiday",
+}
+past_cols = [c for c in df.columns if c not in EXCLUDED_COLS]
+USE_PAST_COV = len(past_cols) > 0
+
+if USE_PAST_COV:
+    print(f"  Past covariates: {past_cols}")
+else:
+    print("  Nessuna past covariate — verranno ignorate.")
+
+# Genera calendario futuro per le future covariates
 last_date = df["TimeStamp"].iloc[-1]
-future_dates = pd.date_range(start=last_date + pd.Timedelta(hours=1), periods=OUTPUT_CHUNK_LEN, freq="h")
+future_dates = pd.date_range(
+    start=last_date + pd.Timedelta(hours=1),
+    periods=OUTPUT_CHUNK_LEN,
+    freq="h",
+)
 future_df = pd.DataFrame({"TimeStamp": future_dates})
-future_df["hour"] = future_df["TimeStamp"].dt.hour
-future_df["day_of_week"] = future_df["TimeStamp"].dt.dayofweek
-future_df["is_holiday"] = future_df["TimeStamp"].apply(lambda x: 1 if x in it_holidays else 0)
+future_df["hour"]              = future_df["TimeStamp"].dt.hour
+future_df["day_of_week"]       = future_df["TimeStamp"].dt.dayofweek
+future_df["is_holiday"]        = future_df["TimeStamp"].apply(lambda x: 1 if x in it_holidays else 0)
 
-# Combine original and future for the covariates only
 df_extended = pd.concat([df, future_df], ignore_index=True)
 
-TARGET = "InUseCapacity"
-series = fill_missing_values(TimeSeries.from_dataframe(df, "TimeStamp", TARGET))
+# ---------------------------------------------------------------------------
+# 2. TimeSeries Creation
+# ---------------------------------------------------------------------------
+print("\n" + "=" * 60)
+print("2. BUILDING TIMESERIES")
+print("=" * 60)
 
-past_cols  = [c for c in df.columns if c not in [TARGET, "TimeStamp", "item_id", "hour", "day_of_week", "is_holiday"]]
-past_cov   = fill_missing_values(TimeSeries.from_dataframe(df, "TimeStamp", past_cols))
+# Target — NESSUNO SCALER (Chronos-2 fa mean-scaling + arcsinh internamente)
+series = fill_missing_values(
+    TimeSeries.from_dataframe(df, "TimeStamp", TARGET)
+)
+print(f"  Target range: [{series.values().min():.2f}, {series.values().max():.2f}]")
 
-fut_cols   = ["hour", "day_of_week", "is_holiday"]
-future_cov = fill_missing_values(TimeSeries.from_dataframe(df_extended, "TimeStamp", fut_cols))
+# Future covariates
+fut_cols = ["hour", "day_of_week", "is_holiday"]
+future_cov = fill_missing_values(
+    TimeSeries.from_dataframe(df_extended, "TimeStamp", fut_cols)
+)
 
-# --- Train / Validation / Test Split ---
-total_len   = len(series)
+# Past covariates (solo se esistono)
+if USE_PAST_COV:
+    past_cov = fill_missing_values(
+        TimeSeries.from_dataframe(df, "TimeStamp", past_cols)
+    )
+
+# ---------------------------------------------------------------------------
+# 3. Train / Val / Test Split
+# ---------------------------------------------------------------------------
+print("\n" + "=" * 60)
+print("3. TRAIN / VAL / TEST SPLIT")
+print("=" * 60)
+
+total_len  = len(series)
+test_start = total_len - PREDICTION_LENGTH
 MIN_VAL_LEN = INPUT_CHUNK_LEN + OUTPUT_CHUNK_LEN
-test_start  = total_len - PREDICTION_LENGTH
 val_start   = test_start - MIN_VAL_LEN
+
+print(f"  Totale:  {total_len} punti")
+print(f"  Train:   0 → {val_start}  ({val_start} punti)")
+print(f"  Val:     {val_start} → {test_start}  ({test_start - val_start} punti)")
+print(f"  Test:    {test_start} → {total_len}  ({total_len - test_start} punti)")
 
 train_series = series[:val_start]
 val_series   = series[val_start:test_start]
-test_series  = series[test_start:]
 
 train_future = future_cov[:val_start]
 val_future   = future_cov[val_start:test_start]
 
-train_past   = past_cov[:val_start]
-val_past     = past_cov[val_start:test_start]
+if USE_PAST_COV:
+    train_past = past_cov[:val_start]
+    val_past   = past_cov[val_start:test_start]
 
-# --- Scaling ---
-scaler_target = Scaler()
-scaler_past   = Scaler()
+# Scale SOLO le covariates (il target NO)
 scaler_future = Scaler()
+train_future_sc = scaler_future.fit_transform(train_future)
+val_future_sc   = scaler_future.transform(val_future)
+future_cov_sc   = scaler_future.transform(future_cov)
 
-train_series_sc  = scaler_target.fit_transform(train_series)
-val_series_sc    = scaler_target.transform(val_series)
-test_series_sc   = scaler_target.transform(test_series)
-series_sc        = scaler_target.transform(series)
+if USE_PAST_COV:
+    scaler_past   = Scaler()
+    train_past_sc = scaler_past.fit_transform(train_past)
+    val_past_sc   = scaler_past.transform(val_past)
+    past_cov_sc   = scaler_past.transform(past_cov)
 
-train_past_sc    = scaler_past.fit_transform(train_past)
-val_past_sc      = scaler_past.transform(val_past)
-past_cov_sc      = scaler_past.transform(past_cov)
-
-train_future_sc  = scaler_future.fit_transform(train_future)
-val_future_sc    = scaler_future.transform(val_future)
-future_cov_sc    = scaler_future.transform(future_cov)
 
 # ---------------------------------------------------------------------------
-# 2. Baseline Evaluation (PRE-Finetuning / Zero-Shot)
+# Helper: costruisce kwargs per covariates
 # ---------------------------------------------------------------------------
-print("\n--- 4. Evaluating Pre-trained Baseline (Zero-Shot) ---")
-test_start_timestamp = series_sc.time_index[test_start]
+def make_cov_kwargs(future, past=None, prefix=""):
+    """
+    Costruisce i kwargs per future/past covariates.
+    prefix="" per fit/predict, prefix="val_" per validation.
+    """
+    kw = {f"{prefix}future_covariates": future}
+    if USE_PAST_COV and past is not None:
+        kw[f"{prefix}past_covariates"] = past
+    return kw
+
+
+# ---------------------------------------------------------------------------
+# 4. Zero-Shot Baseline
+# ---------------------------------------------------------------------------
+print("\n" + "=" * 60)
+print("4. ZERO-SHOT BASELINE")
+print("=" * 60)
+
+test_start_timestamp = series.time_index[test_start]
 
 model_zeroshot = ProbabilisticChronos2Model(
     input_chunk_length=INPUT_CHUNK_LEN,
@@ -154,36 +218,64 @@ model_zeroshot = ProbabilisticChronos2Model(
     batch_size=BATCH_SIZE,
 )
 
+# Fit (training-free per zero-shot, ma Darts lo richiede)
 model_zeroshot.fit(
-    series=train_series_sc,
-    past_covariates=train_past_sc,
-    future_covariates=train_future_sc,
+    series=train_series,
+    **make_cov_kwargs(
+        train_future_sc,
+        train_past_sc if USE_PAST_COV else None,
+    ),
+)
+
+# Backtest sul test set
+eval_cov = make_cov_kwargs(
+    future_cov_sc,
+    past_cov_sc if USE_PAST_COV else None,
 )
 
 baseline_metrics = model_zeroshot.backtest(
-    series=series_sc,
-    past_covariates=past_cov_sc,
-    future_covariates=future_cov_sc,
+    series=series,
+    **eval_cov,
     start=test_start_timestamp,
     forecast_horizon=FORECAST_HORIZON,
     stride=FORECAST_HORIZON,
     metric=[rmse, mae, mse, r2_score],
     num_samples=NUM_SAMPLES,
-    retrain=False, 
+    retrain=False,
     verbose=False,
 )
 base_rmse, base_mae, base_mse, base_r2 = baseline_metrics
 
 baseline_forecasts = model_zeroshot.historical_forecasts(
-    series=series_sc, past_covariates=past_cov_sc, future_covariates=future_cov_sc,
-    start=test_start_timestamp, forecast_horizon=FORECAST_HORIZON, stride=FORECAST_HORIZON,
-    num_samples=NUM_SAMPLES, retrain=False, verbose=False
+    series=series,
+    **eval_cov,
+    start=test_start_timestamp,
+    forecast_horizon=FORECAST_HORIZON,
+    stride=FORECAST_HORIZON,
+    num_samples=NUM_SAMPLES,
+    retrain=False,
+    verbose=False,
 )
 base_concat = concatenate(baseline_forecasts)
 
-print(f"  Zero-Shot RMSE : {base_rmse:.4f}")
-print(f"  Zero-Shot MAE  : {base_mae:.4f}")
-print(f"  Zero-Shot R²   : {base_r2:.4f}")
+print(f"  RMSE : {base_rmse:.4f}")
+print(f"  MAE  : {base_mae:.4f}")
+print(f"  R²   : {base_r2:.4f}")
+
+# ---------------------------------------------------------------------------
+# 5. Dump layer names (per future selective unfreezing)
+# ---------------------------------------------------------------------------
+print("\n" + "=" * 60)
+print("5. MODEL LAYER NAMES (for reference)")
+print("=" * 60)
+
+layer_names_path = os.path.join(OUTPUTS_DIR, "chronos2_layer_names.txt")
+with open(layer_names_path, "w") as f:
+    for name, param in model_zeroshot.model.named_parameters():
+        line = f"{name:60s} {str(list(param.shape)):>20s} requires_grad={param.requires_grad}"
+        f.write(line + "\n")
+        print(f"  {line}")
+print(f"\n  Layer names salvati in: {layer_names_path}")
 
 del model_zeroshot
 gc.collect()
@@ -191,17 +283,28 @@ if torch.cuda.is_available():
     torch.cuda.empty_cache()
 
 # ---------------------------------------------------------------------------
-# 3. Callbacks & Fine-Tuning Model Init
+# 6. Fine-Tuning
 # ---------------------------------------------------------------------------
-print("\n--- 5. Initialising Chronos-2 for Fine-Tuning ---")
-early_stopper = EarlyStopping(monitor="val_loss", patience=EARLY_STOP_PATIENCE, min_delta=0.001, mode="min")
+print("\n" + "=" * 60)
+print("6. FINE-TUNING")
+print("=" * 60)
+
+early_stopper = EarlyStopping(
+    monitor="val_loss",
+    patience=EARLY_STOP_PATIENCE,
+    min_delta=0.001,
+    mode="min",
+)
 progress_bar = TFMProgressBar(enable_train_bar_only=True)
 
 model = ProbabilisticChronos2Model(
     input_chunk_length=INPUT_CHUNK_LEN,
     output_chunk_length=OUTPUT_CHUNK_LEN,
     hub_model_name="amazon/chronos-2",
-    enable_finetuning={"unfreeze": ["output_patch_embedding*"]},
+    # Full fine-tuning: sblocca TUTTI i layer.
+    # Una volta letto chronos2_layer_names.txt puoi passare a unfreezing selettivo, es:
+    # enable_finetuning={"unfreeze": ["nome_layer_specifico*"]},
+    enable_finetuning=True,
     optimizer_kwargs={"lr": LEARNING_RATE},
     batch_size=BATCH_SIZE,
     pl_trainer_kwargs={
@@ -213,35 +316,43 @@ model = ProbabilisticChronos2Model(
     },
 )
 
-# ---------------------------------------------------------------------------
-# 4. Fine-Tuning
-# ---------------------------------------------------------------------------
-print("\n--- 6. Fine-Tuning ---")
+# Kwargs per training e validation
+fit_cov = make_cov_kwargs(
+    train_future_sc,
+    train_past_sc if USE_PAST_COV else None,
+)
+val_cov = make_cov_kwargs(
+    val_future_sc,
+    val_past_sc if USE_PAST_COV else None,
+    prefix="val_",
+)
+
 model.fit(
-    series=train_series_sc,
-    past_covariates=train_past_sc,
-    future_covariates=train_future_sc,
-    val_series=val_series_sc,
-    val_past_covariates=val_past_sc,
-    val_future_covariates=val_future_sc,
+    series=train_series,
+    **fit_cov,
+    val_series=val_series,
+    **val_cov,
     max_samples_per_ts=MAX_SAMPLES_PER_TS,
-    dataloader_kwargs={"num_workers": NUM_WORKERS, "persistent_workers": True, "pin_memory": True},
+    dataloader_kwargs={
+        "num_workers": NUM_WORKERS,
+        "persistent_workers": True,
+        "pin_memory": True,
+    },
 )
 
 # ---------------------------------------------------------------------------
-# 5. Post Fine-Tuning Evaluation (ON TEST SET)
+# 7. Post Fine-Tuning Evaluation
 # ---------------------------------------------------------------------------
-print("\n--- 7. Evaluating Fine-Tuned Model on Test Set ---")
+print("\n" + "=" * 60)
+print("7. FINE-TUNED EVALUATION")
+print("=" * 60)
 
-# We use the test_start_timestamp to ensure we only evaluate 
-# on the 1024 steps we held out from training.
 ft_metrics = model.backtest(
-    series=series_sc,
-    past_covariates=past_cov_sc,
-    future_covariates=future_cov_sc,
-    start=test_start_timestamp, # Points to the start of the 1024 steps
+    series=series,
+    **eval_cov,
+    start=test_start_timestamp,
     forecast_horizon=FORECAST_HORIZON,
-    stride=FORECAST_HORIZON,    # Moving in 24h jumps
+    stride=FORECAST_HORIZON,
     metric=[rmse, mae, mse, r2_score],
     num_samples=NUM_SAMPLES,
     retrain=False,
@@ -249,111 +360,137 @@ ft_metrics = model.backtest(
 )
 ft_rmse, ft_mae, ft_mse, ft_r2 = ft_metrics
 
-# Generate the actual forecast objects for the plots
 ft_forecasts = model.historical_forecasts(
-    series=series_sc,
-    past_covariates=past_cov_sc,
-    future_covariates=future_cov_sc,
+    series=series,
+    **eval_cov,
     start=test_start_timestamp,
     forecast_horizon=FORECAST_HORIZON,
     stride=FORECAST_HORIZON,
     num_samples=NUM_SAMPLES,
     retrain=False,
-    verbose=False
+    verbose=False,
 )
 ft_concat = concatenate(ft_forecasts)
 
-# ---------------------------------------------------------------------------
-# 6. Plots (Official Darts Tutorial Style)
-# ---------------------------------------------------------------------------
-print("\n--- 8. Generating Plots ---")
-from darts import set_option
-import numpy as np
+print(f"  RMSE : {ft_rmse:.4f}")
+print(f"  MAE  : {ft_mae:.4f}")
+print(f"  R²   : {ft_r2:.4f}")
 
-# Questo attiva lo stile ufficiale Darts per tutti i grafici successivi
+# ---------------------------------------------------------------------------
+# 8. Plots
+# ---------------------------------------------------------------------------
+print("\n" + "=" * 60)
+print("8. PLOTS")
+print("=" * 60)
+
 set_option("plotting.use_darts_style", True)
+
 
 def save_fig(fig, name):
     path = os.path.join(OUTPUTS_DIR, name)
     fig.savefig(path, dpi=150, bbox_inches="tight")
     plt.close(fig)
-    print(f"  Plot saved to {path}")
+    print(f"  Saved: {path}")
 
-# Helper per estrarre in modo sicuro i quantili (evita bug di versione)
+
 def get_q(ts, q):
-    vals = np.quantile(ts.all_values(), q, axis=-1).flatten()
-    return pd.Series(vals, index=ts.time_index)
+    return pd.Series(
+        np.quantile(ts.all_values(), q, axis=-1).flatten(),
+        index=ts.time_index,
+    )
+
 
 def to_pd(ts):
     return pd.Series(ts.all_values().flatten(), index=ts.time_index)
 
-# Dati reali (Test set + 1 settimana di contesto visivo)
-context_sc  = to_pd(series_sc[test_start - 168 : test_start + PREDICTION_LENGTH])
 
-# Estrazione quantili
+# Contesto visivo: 1 settimana prima del test + test
+context = to_pd(series[test_start - 168 : test_start + PREDICTION_LENGTH])
+
 base_p50, base_p10, base_p90 = get_q(base_concat, 0.5), get_q(base_concat, 0.1), get_q(base_concat, 0.9)
 ft_p50, ft_p10, ft_p90 = get_q(ft_concat, 0.5), get_q(ft_concat, 0.1), get_q(ft_concat, 0.9)
 
-# --- Plot 1: Overlay (Darts Native Style) ---
+# --- Plot 1: Overlay ---
 fig, (ax1, ax2) = plt.subplots(nrows=2, ncols=1, figsize=(16, 10), sharex=True)
 
-# Top Graph: Baseline (Zero-Shot)
-ax1.plot(context_sc.index, context_sc.values, label="Ground truth")
-ax1.plot(base_p50.index, base_p50.values, label="Forecast")
+ax1.plot(context.index, context.values, label="Ground truth")
+ax1.plot(base_p50.index, base_p50.values, label="Forecast (p50)")
 ax1.fill_between(base_p10.index, base_p10.values, base_p90.values, alpha=0.2)
-ax1.set_title(f"Pre-trained Chronos-2; RMSE {base_rmse:.4f}")
+ax1.set_title(f"Pre-trained Chronos-2 (Zero-Shot) — RMSE {base_rmse:.4f}")
 ax1.legend()
 
-# Bottom Graph: Fine-Tuned
-ax2.plot(context_sc.index, context_sc.values, label="Ground truth")
-ax2.plot(ft_p50.index, ft_p50.values, label="Forecast")
+ax2.plot(context.index, context.values, label="Ground truth")
+ax2.plot(ft_p50.index, ft_p50.values, label="Forecast (p50)")
 ax2.fill_between(ft_p10.index, ft_p10.values, ft_p90.values, alpha=0.2)
-ax2.set_title(f"Fine-tuned Chronos-2; RMSE {ft_rmse:.4f}")
+ax2.set_title(f"Fine-tuned Chronos-2 — RMSE {ft_rmse:.4f}")
 ax2.legend()
 
 fig.tight_layout()
 save_fig(fig, "plot_1_forecast_comparison.png")
 
-# --- Plots 2-5: Metrics ---
+# --- Metric bar charts ---
 COLORS = {"baseline": "#E67E22", "finetuned": "#2980B9"}
-labels_bar = ["Baseline\n(Zero-Shot)", "Fine-tuned\n(Post)"]
-
-metrics = [("RMSE", base_rmse, ft_rmse), ("MAE", base_mae, ft_mae), ("MSE", base_mse, ft_mse), ("R2", base_r2, ft_r2)]
-for i, (name, b_v, f_v) in enumerate(metrics, 2):
+labels_bar = ["Baseline\n(Zero-Shot)", "Fine-tuned"]
+metrics_list = [
+    ("RMSE", base_rmse, ft_rmse),
+    ("MAE", base_mae, ft_mae),
+    ("MSE", base_mse, ft_mse),
+    ("R2", base_r2, ft_r2),
+]
+for i, (name, b_v, f_v) in enumerate(metrics_list, 2):
     fig, ax = plt.subplots(figsize=(6, 5))
-    bars = ax.bar(labels_bar, [b_v, f_v], color=[COLORS["baseline"], COLORS["finetuned"]], width=0.5)
+    bars = ax.bar(
+        labels_bar, [b_v, f_v],
+        color=[COLORS["baseline"], COLORS["finetuned"]], width=0.5,
+    )
     ax.set_title(f"{name} Comparison", fontweight="bold")
     for bar in bars:
-        height = bar.get_height()
-        ax.text(bar.get_x() + bar.get_width()/2., height, f'{height:.4f}', ha='center', va='bottom', fontweight='bold')
+        h = bar.get_height()
+        ax.text(bar.get_x() + bar.get_width() / 2.0, h,
+                f"{h:.4f}", ha="center", va="bottom", fontweight="bold")
     save_fig(fig, f"plot_{i}_{name.lower()}.png")
 
 # ---------------------------------------------------------------------------
-# 7. Operational Forecast — next 24h
+# 9. 24h Operational Forecast
 # ---------------------------------------------------------------------------
-print("\n--- 9. Generating 24h Operational Forecast ---")
-forecast_sc = model.predict(
+print("\n" + "=" * 60)
+print("9. 24h OPERATIONAL FORECAST")
+print("=" * 60)
+
+forecast = model.predict(
     n=FORECAST_HORIZON,
-    series=series_sc,
-    past_covariates=past_cov_sc,
-    future_covariates=future_cov_sc,
+    series=series,
+    **eval_cov,
     num_samples=NUM_SAMPLES,
 )
 
-forecast_original = scaler_target.inverse_transform(forecast_sc)
-
-# Manual extraction using numpy for complete version independence
-f_vals = forecast_original.all_values() # (time, component, sample)
-p50_vals = np.quantile(f_vals, 0.5, axis=-1).flatten()
-p10_vals = np.quantile(f_vals, 0.1, axis=-1).flatten()
-p90_vals = np.quantile(f_vals, 0.9, axis=-1).flatten()
-
-df_forecast = pd.DataFrame({
-    "InUseCapacity_P50": p50_vals,
-    "InUseCapacity_P10": p10_vals,
-    "InUseCapacity_P90": p90_vals
-}, index=forecast_original.time_index)
+# Nessuna inverse_transform: dati già nel dominio originale
+f_vals = forecast.all_values()
+df_forecast = pd.DataFrame(
+    {
+        "InUseCapacity_P50": np.quantile(f_vals, 0.5, axis=-1).flatten(),
+        "InUseCapacity_P10": np.quantile(f_vals, 0.1, axis=-1).flatten(),
+        "InUseCapacity_P90": np.quantile(f_vals, 0.9, axis=-1).flatten(),
+    },
+    index=forecast.time_index,
+)
 
 forecast_csv = os.path.join(OUTPUTS_DIR, "forecast_next_24h.csv")
 df_forecast.to_csv(forecast_csv)
-print(f"  24h forecast saved to {forecast_csv}")
+print(f"  Saved: {forecast_csv}")
+print(df_forecast.to_string())
+
+# ---------------------------------------------------------------------------
+# 10. Summary
+# ---------------------------------------------------------------------------
+print("\n" + "=" * 60)
+print("RESULTS SUMMARY")
+print("=" * 60)
+print(f"  {'Metric':<8} {'Zero-Shot':>12} {'Fine-Tuned':>12} {'Delta':>10}")
+print(f"  {'─' * 8} {'─' * 12} {'─' * 12} {'─' * 10}")
+for name, b, f in metrics_list:
+    delta = f - b
+    better = (name == "R2" and delta > 0) or (name != "R2" and delta < 0)
+    arrow = "✓" if better else "✗"
+    print(f"  {name:<8} {b:>12.4f} {f:>12.4f} {delta:>+9.4f} {arrow}")
+print("=" * 60)
