@@ -245,6 +245,18 @@ for mode in COVARIATE_MODES:
             "actual": aligned_actual,
         }
 
+# Save backtest P50 CSVs (mode='none') for cross-model line comparison
+for h in HORIZONS:
+    p50_s = backtest_preds[("none", h)]["p50"]
+    act_s = backtest_preds[("none", h)]["actual"]
+    out_df = pd.DataFrame({
+        "InUseCapacity_P50":    p50_s.values().flatten(),
+        "InUseCapacity_Actual": act_s.values().flatten(),
+    }, index=p50_s.time_index)
+    out_df.index.name = "TimeStamp"
+    out_df.to_csv(os.path.join(OUTPUTS_DIR, f"chronos2_backtest_p50_h{h}.csv"))
+print("  Saved Chronos-2 backtest P50 CSVs (chronos2_backtest_p50_h*.csv)")
+
 # ---------------------------------------------------------------------------
 # 7. Load 90-Day Benchmark (if available) for comparison
 # ---------------------------------------------------------------------------

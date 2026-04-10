@@ -243,6 +243,18 @@ for h in HORIZONS:
         "actual": aligned_actual,
     }
 
+# Save backtest P50 CSVs for cross-model line comparison
+for h in HORIZONS:
+    p50_s = backtest_preds[h]["p50"]
+    act_s = backtest_preds[h]["actual"]
+    out_df = pd.DataFrame({
+        "InUseCapacity_P50":    p50_s.values().flatten(),
+        "InUseCapacity_Actual": act_s.values().flatten(),
+    }, index=p50_s.time_index)
+    out_df.index.name = "TimeStamp"
+    out_df.to_csv(os.path.join(OUTPUTS_DIR, f"timesfm2p5_backtest_p50_h{h}.csv"))
+print("  Saved TimesFM-2.5 backtest P50 CSVs (timesfm2p5_backtest_p50_h*.csv)")
+
 # ---------------------------------------------------------------------------
 # 7. Load Chronos-2 Hourly Benchmark for direct comparison
 # ---------------------------------------------------------------------------
@@ -254,6 +266,7 @@ if os.path.exists(chronos_bench_path):
     if "none" in cdf.index.get_level_values(0):
         chronos_bench = cdf.loc["none"]
         print(f"\n  Loaded Chronos-2 hourly benchmark (mode='none') for comparison.")
+
 
 # ---------------------------------------------------------------------------
 # 8. Metrics Summary Table

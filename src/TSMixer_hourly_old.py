@@ -203,7 +203,7 @@ print(f"  Test starts at: {test_series.start_time()}")
 # 5. Model Factory
 # ---------------------------------------------------------------------------
 
-def build_model(monitor: str = "val_loss") -> TSMixerModel:
+def build_model() -> TSMixerModel:
     """Instantiate TSMixerModel with QuantileRegression likelihood.
 
     TSMixer key parameters:
@@ -213,15 +213,12 @@ def build_model(monitor: str = "val_loss") -> TSMixerModel:
     - likelihood           : QuantileRegression → probabilistic quantile output
     - n_epochs / batch_size: standard PyTorch-Lightning training knobs
 
-    monitor:
-        "val_loss"   — use when val_series is passed to fit() (backtest models).
-        "train_loss" — use when no val_series is passed (operational forecast);
-                       EarlyStopping then monitors training loss only, so it
-                       never crashes even without a validation dataloader.
+    Early stopping is handled by passing val_series to fit(); PyTorch-Lightning
+    will monitor val_loss and stop if it does not improve for `patience` epochs.
     """
     from pytorch_lightning.callbacks.early_stopping import EarlyStopping
     early_stop = EarlyStopping(
-        monitor=monitor,
+        monitor="val_loss",
         patience=10,
         min_delta=1e-4,
         mode="min",
@@ -317,38 +314,15 @@ for mode in COVARIATE_MODES:
         }
 
 # ---------------------------------------------------------------------------
-# 7. Save backtest P50 CSVs (for cross-model line plots) + Load benchmarks
+# 7. Load Chronos-2 Hourly Benchmark for comparison
 # ---------------------------------------------------------------------------
-
-# Save per-horizon P50 predictions so that cross-model plots can load them
-for h in HORIZONS:
-    p50_series = backtest_preds[("none", h)]["p50"]
-    actual_series = backtest_preds[("none", h)]["actual"]
-    p50_df = pd.DataFrame({
-        "InUseCapacity_P50":    p50_series.values().flatten(),
-        "InUseCapacity_Actual": actual_series.values().flatten(),
-    }, index=p50_series.time_index)
-    p50_df.index.name = "TimeStamp"
-    p50_df.to_csv(os.path.join(OUTPUTS_DIR, f"tsmixer_backtest_p50_h{h}.csv"))
-print("  Saved TSMixer backtest P50 CSVs (tsmixer_backtest_p50_h*.csv)")
-
-# Load Chronos-2 metrics (mode='none' only — for fair target-only comparison)
 chronos_bench_path = os.path.join(OUTPUTS_DIR, "chronos2_hourly_metrics.csv")
 chronos_bench = None
 if os.path.exists(chronos_bench_path):
     cdf = pd.read_csv(chronos_bench_path, index_col=[0, 1])
     if "none" in cdf.index.get_level_values(0):
         chronos_bench = cdf.loc["none"]
-        print(f"  Loaded Chronos-2 hourly benchmark (mode='none').")
-
-# Load TimesFM-2.5 metrics
-timesfm_bench_path = os.path.join(OUTPUTS_DIR, "timesfm2p5_hourly_metrics.csv")
-timesfm_bench = None
-if os.path.exists(timesfm_bench_path):
-    tdf = pd.read_csv(timesfm_bench_path, index_col=[0, 1])
-    first_model = tdf.index.get_level_values(0)[0]
-    timesfm_bench = tdf.loc[first_model]
-    print(f"  Loaded TimesFM-2.5 hourly benchmark.")
+        print(f"\n  Loaded Chronos-2 hourly benchmark (mode='none') for comparison.")
 
 # ---------------------------------------------------------------------------
 # 8. Metrics Summary Table
@@ -401,10 +375,8 @@ print("\n" + "=" * 65)
 print("7. OPERATIONAL FORECAST (next steps from now)")
 print("=" * 65)
 
-# Use the 'none' (target-only) model as the operational default (no lookahead needed).
-# monitor="train_loss": no val_series is passed here, so EarlyStopping must
-# monitor train_loss to avoid a RuntimeError when val_loss is unavailable.
-op_model = build_model(monitor="train_loss")
+# Use the 'none' (target-only) model as the operational default (no lookahead needed)
+op_model = build_model()
 print(f"  Fitting on full series ({len(series)} steps)…")
 op_model.fit(series=series, verbose=True)
 
@@ -444,171 +416,116 @@ def save_fig(fig, fname):
     print(f"  Saved: {path}")
 
 
-# ── Plot 1: Combined-modes backtest — both modes on same subplots with bands ─
-# One row per horizon; each row shows: Actual, Target-Only P50 + band, Calendar P50 + band
+# ── Plot 1: Rolling Backtest — one subplot per horizon (mode='none') ────────
 fig, axes = plt.subplots(nrows=len(HORIZONS), ncols=1, figsize=(18, 5 * len(HORIZONS)), sharex=True)
-fig.suptitle("TSMixer Backtesting — Target-Only vs Calendar Covariates", fontsize=14, fontweight="bold")
+fig.suptitle("TSMixer Short-Term Backtesting (target-only mode)", fontsize=14, fontweight="bold")
 
 for ax, h in zip(axes, HORIZONS):
-    actual = backtest_preds[("none", h)]["actual"]
+    key    = ("none", h)
+    preds  = backtest_preds[key]
+    actual = preds["actual"]
+    p50    = preds["p50"]
+    full   = preds["concat"]
+
+    p10 = full.quantile(0.1)
+    p90 = full.quantile(0.9)
+
     actual.plot(ax=ax, label="Actual", color="#2ecc71", linewidth=2)
+    p50.plot(ax=ax, label=f"Forecast P50 (h={h})", color="#8e44ad", linewidth=1.5)
 
-    for mode, color, label in [
-        ("none",     "#8e44ad", "Target-Only"),
-        ("calendar", "#2980b9", "Calendar Cov."),
-    ]:
-        key  = (mode, h)
-        m    = all_results[key]
-        full = backtest_preds[key]["concat"]
-        p10  = full.quantile(0.1)
-        p50  = backtest_preds[key]["p50"]
-        p90  = full.quantile(0.9)
+    ax.fill_between(
+        p10.time_index,
+        p10.values().flatten(),
+        p90.values().flatten(),
+        alpha=0.25,
+        color="#8e44ad",
+        label="P10–P90 band",
+    )
 
-        p50.plot(
-            ax=ax,
-            label=f"{label}  RMSE={m['rmse']:.2f}  R²={m['r2']:.4f}",
-            color=color,
-            linewidth=1.5,
-        )
-        ax.fill_between(
-            p10.time_index,
-            p10.values().flatten(),
-            p90.values().flatten(),
-            alpha=0.15,
-            color=color,
-        )
-
-    m_none = all_results[("none", h)]
-    m_cal  = all_results[("calendar", h)]
+    m = all_results[key]
     ax.set_title(
-        f"h={h}h  |  Target-Only: RMSE={m_none['rmse']:.2f}  R²={m_none['r2']:.4f}   "
-        f"Calendar: RMSE={m_cal['rmse']:.2f}  R²={m_cal['r2']:.4f}",
+        f"h={h}h  |  MSE={m['mse']:.2f}   RMSE={m['rmse']:.2f}   "
+        f"MAE={m['mae']:.2f}   R²={m['r2']:.4f}",
         fontsize=10,
     )
     ax.legend(fontsize=8)
     ax.grid(True, alpha=0.3)
 
 fig.tight_layout(rect=[0, 0, 1, 0.97])
-save_fig(fig, "tsmixer_hourly_backtest_combined_modes.png")
+save_fig(fig, "tsmixer_hourly_backtest_none.png")
 
-# ── Plot 2: Cross-model line comparison (TSMixer vs TimesFM vs Chronos-2) ───
-# Requires that chronos2_hourly.py and TimesFM2p5_hourly.py have been run and
-# have saved their backtest P50 CSVs (chronos2_backtest_p50_h*.csv, etc.).
-cross_model_data = {}   # model_label → {h: pd.Series(P50, index=DatetimeIndex)}
+# ── Plot 2: Mode Comparison per horizon ────────────────────────────────────
+fig, axes = plt.subplots(nrows=len(HORIZONS), ncols=1, figsize=(18, 5 * len(HORIZONS)), sharex=True)
+fig.suptitle("TSMixer: target-only vs calendar-covariates", fontsize=14, fontweight="bold")
 
-# TSMixer target-only — already in memory
-cross_model_data["TSMixer"] = {
-    h: backtest_preds[("none", h)]["p50"] for h in HORIZONS
-}
+mode_styles = {"none": ("#8e44ad", "Target-Only"), "calendar": ("#2980b9", "Calendar Cov.")}
 
-# Try to load Chronos-2 P50 CSVs
-c2_csvs = {h: os.path.join(OUTPUTS_DIR, f"chronos2_backtest_p50_h{h}.csv") for h in HORIZONS}
-if all(os.path.exists(p) for p in c2_csvs.values()):
-    cross_model_data["Chronos-2"] = {}
-    for h in HORIZONS:
-        df_c2 = pd.read_csv(c2_csvs[h], index_col="TimeStamp", parse_dates=True)
-        cross_model_data["Chronos-2"][h] = df_c2["InUseCapacity_P50"]
-else:
-    print("  ⚠ Chronos-2 backtest P50 CSVs not found — re-run chronos2_hourly.py to enable cross-model plot.")
+for ax, h in zip(axes, HORIZONS):
+    actual = backtest_preds[("none", h)]["actual"]
+    actual.plot(ax=ax, label="Actual", color="#2ecc71", linewidth=2)
 
-# Try to load TimesFM P50 CSVs
-tfm_csvs = {h: os.path.join(OUTPUTS_DIR, f"timesfm2p5_backtest_p50_h{h}.csv") for h in HORIZONS}
-if all(os.path.exists(p) for p in tfm_csvs.values()):
-    cross_model_data["TimesFM-2.5"] = {}
-    for h in HORIZONS:
-        df_tfm = pd.read_csv(tfm_csvs[h], index_col="TimeStamp", parse_dates=True)
-        cross_model_data["TimesFM-2.5"][h] = df_tfm["InUseCapacity_P50"]
-else:
-    print("  ⚠ TimesFM-2.5 backtest P50 CSVs not found — re-run TimesFM2p5_hourly.py to enable cross-model plot.")
+    for mode, (color, label) in mode_styles.items():
+        key = (mode, h)
+        m   = all_results[key]
+        backtest_preds[key]["p50"].plot(
+            ax=ax,
+            label=f"{label}  RMSE={m['rmse']:.2f}  R²={m['r2']:.4f}",
+            color=color,
+            linewidth=1.5,
+        )
 
-if len(cross_model_data) > 1:   # at least TSMixer + one other model
-    model_colors = {
-        "TSMixer":    "#8e44ad",
-        "TimesFM-2.5": "#e67e22",
-        "Chronos-2":  "#e74c3c",
-    }
-    fig, axes = plt.subplots(nrows=len(HORIZONS), ncols=1, figsize=(18, 5 * len(HORIZONS)), sharex=True)
-    fig.suptitle(
-        "Cross-Model Comparison — TSMixer vs TimesFM-2.5 vs Chronos-2 (all target-only)",
-        fontsize=14, fontweight="bold",
-    )
+    ax.set_title(f"Horizon h={h}h — mode comparison", fontsize=10)
+    ax.legend(fontsize=8)
+    ax.grid(True, alpha=0.3)
 
-    for ax, h in zip(axes, HORIZONS):
-        # Plot actual data (use TSMixer's aligned actual as reference)
-        act = backtest_preds[("none", h)]["actual"]
-        act.plot(ax=ax, label="Actual", color="#2ecc71", linewidth=2)
+fig.tight_layout(rect=[0, 0, 1, 0.97])
+save_fig(fig, "tsmixer_hourly_mode_comparison.png")
 
-        for model_label, preds_by_h in cross_model_data.items():
-            color = model_colors.get(model_label, "#7f8c8d")
-            pred  = preds_by_h[h]
-            if hasattr(pred, "plot"):   # Darts TimeSeries
-                rmse_val = all_results[("none", h)]["rmse"]
-                pred.plot(ax=ax, label=f"{model_label}  RMSE={rmse_val:.2f}", color=color, linewidth=1.5)
-            else:                       # pandas Series from CSV
-                ax.plot(pred.index, pred.values, label=model_label, color=color, linewidth=1.5)
+# ── Plot 3: Metrics bar chart (per mode × horizon) ──────────────────────────
+bar_width = 0.35
+x         = np.arange(len(HORIZONS))
 
-        ax.set_title(f"Horizon h={h}h", fontsize=10)
-        ax.legend(fontsize=8)
-        ax.grid(True, alpha=0.3)
+# Optionally add Chronos-2 bars for cross-model comparison
+show_c2 = chronos_bench is not None
 
-    fig.tight_layout(rect=[0, 0, 1, 0.97])
-    save_fig(fig, "cross_model_backtest_comparison.png")
-else:
-    print("  Cross-model line plot skipped (no other model P50 CSVs found).")
-
-# ── Plot 3: Metrics bar chart — ALL models: TSMixer-none, TSMixer-cal, Chronos-2, TimesFM ──
-# Bars are grouped in quartets (or triplets / pairs depending on availability)
-bar_candidates = [
-    ("TSMixer Target-Only",  "#8e44ad", [all_results[("none",     h)] for h in HORIZONS]),
-    ("TSMixer Calendar",     "#2980b9", [all_results[("calendar", h)] for h in HORIZONS]),
-]
-if chronos_bench is not None:
-    try:
-        bar_candidates.append((
-            "Chronos-2 Target-Only", "#e74c3c",
-            [{"mse": float(chronos_bench.loc[h, "MSE"]),
-              "rmse": float(chronos_bench.loc[h, "RMSE"]),
-              "mae":  float(chronos_bench.loc[h, "MAE"]),
-              "r2":   float(chronos_bench.loc[h, "R²"])} for h in HORIZONS],
-        ))
-    except Exception:
-        pass
-if timesfm_bench is not None:
-    try:
-        bar_candidates.append((
-            "TimesFM-2.5", "#e67e22",
-            [{"mse": float(timesfm_bench.loc[h, "MSE"]),
-              "rmse": float(timesfm_bench.loc[h, "RMSE"]),
-              "mae":  float(timesfm_bench.loc[h, "MAE"]),
-              "r2":   float(timesfm_bench.loc[h, "R²"])} for h in HORIZONS],
-        ))
-    except Exception:
-        pass
-
-n_bars   = len(bar_candidates)
-bw       = 0.8 / n_bars          # bar width auto-scales with number of models
-x        = np.arange(len(HORIZONS))
-offsets  = np.linspace(-(n_bars - 1) / 2 * bw, (n_bars - 1) / 2 * bw, n_bars)
-
-fig, axes = plt.subplots(nrows=2, ncols=2, figsize=(16, 11))
+fig, axes = plt.subplots(nrows=2, ncols=2, figsize=(14, 10))
 fig.suptitle(
-    "All-Model Metrics Comparison by Horizon",
-    fontsize=14, fontweight="bold",
+    "TSMixer Metrics by Horizon & Mode" + (" (vs Chronos-2 target-only)" if show_c2 else ""),
+    fontsize=14,
+    fontweight="bold",
 )
 
 metric_defs = [("MSE", "mse"), ("RMSE", "rmse"), ("MAE", "mae"), ("R²", "r2")]
 
 for ax, (metric_label, metric_key) in zip(axes.flatten(), metric_defs):
-    all_bars = []
-    for (model_label, color, metrics_list), offset in zip(bar_candidates, offsets):
-        vals = [m[metric_key] for m in metrics_list]
-        bars = ax.bar(x + offset, vals, bw, label=model_label, color=color, alpha=0.85)
-        all_bars.extend(list(bars))
+    col_label = "R²" if metric_label == "R²" else metric_label
+
+    vals_none = [all_results[("none",     h)][metric_key] for h in HORIZONS]
+    vals_cal  = [all_results[("calendar", h)][metric_key] for h in HORIZONS]
+
+    if show_c2:
+        # Three bars: TSMixer-none, TSMixer-calendar, Chronos-2-none
+        offset = bar_width
+        try:
+            vals_c2 = [float(chronos_bench.loc[h, col_label]) for h in HORIZONS]
+        except Exception:
+            vals_c2 = [0.0] * len(HORIZONS)
+
+        bars1 = ax.bar(x - offset, vals_none, bar_width, label="TSMixer Target-Only",   color="#8e44ad", alpha=0.85)
+        bars2 = ax.bar(x,          vals_cal,  bar_width, label="TSMixer Calendar Cov.", color="#2980b9", alpha=0.85)
+        bars3 = ax.bar(x + offset, vals_c2,   bar_width, label="Chronos-2 Target-Only", color="#e74c3c", alpha=0.85)
+        all_bars = list(bars1) + list(bars2) + list(bars3)
+        ax.set_xticks(x)
+        ax.set_xticklabels([f"h={h}" for h in HORIZONS])
+    else:
+        bars1 = ax.bar(x - bar_width / 2, vals_none, bar_width, label="Target-Only",   color="#8e44ad", alpha=0.85)
+        bars2 = ax.bar(x + bar_width / 2, vals_cal,  bar_width, label="Calendar Cov.", color="#2980b9", alpha=0.85)
+        all_bars = list(bars1) + list(bars2)
+        ax.set_xticks(x)
+        ax.set_xticklabels([f"h={h}" for h in HORIZONS])
 
     ax.set_title(metric_label, fontweight="bold")
-    ax.set_xticks(x)
-    ax.set_xticklabels([f"h={h}" for h in HORIZONS])
-    ax.legend(fontsize=7)
+    ax.legend(fontsize=8)
     ax.grid(axis="y", alpha=0.3)
 
     for bar in all_bars:
@@ -619,12 +536,12 @@ for ax, (metric_label, metric_key) in zip(axes.flatten(), metric_defs):
             f"{h_val:.2f}",
             ha="center",
             va="bottom",
-            fontsize=6,
+            fontsize=7,
             fontweight="bold",
         )
 
 fig.tight_layout(rect=[0, 0, 1, 0.96])
-save_fig(fig, "all_models_metrics_bars.png")
+save_fig(fig, "tsmixer_hourly_metrics_bars.png")
 
 # ── Plot 4: Operational forecast (next 4 steps, P50/P70/P90) ───────────────
 fig, ax = plt.subplots(figsize=(12, 5))
@@ -669,9 +586,7 @@ print("DONE — all outputs saved to /outputs/")
 print("=" * 65)
 print(f"  tsmixer_hourly_metrics.csv")
 print(f"  tsmixer_hourly_next_forecast.csv")
-print(f"  tsmixer_backtest_p50_h*.csv               (for cross-model plot)")
-print(f"  tsmixer_hourly_backtest_combined_modes.png")
-print(f"  all_models_metrics_bars.png")
-if len(cross_model_data) > 1:
-    print(f"  cross_model_backtest_comparison.png")
+print(f"  tsmixer_hourly_backtest_none.png")
+print(f"  tsmixer_hourly_mode_comparison.png")
+print(f"  tsmixer_hourly_metrics_bars.png")
 print(f"  tsmixer_hourly_operational_forecast.png")
