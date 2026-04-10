@@ -30,7 +30,7 @@ import numpy as np
 import pandas as pd
 
 from darts import TimeSeries, concatenate, set_option
-from darts.metrics import mae, smape, rmse, r2_score
+from darts.metrics import mae, mse, rmse, r2_score
 from darts.models import Chronos2Model
 from darts.utils.likelihood_models import QuantileRegression
 from darts.utils.missing_values import fill_missing_values
@@ -226,16 +226,16 @@ for mode in COVARIATE_MODES:
         aligned_actual = series.slice_intersect(hf_p50)
 
         mae_val  = mae( aligned_actual, hf_p50)
-        mape_val = smape(aligned_actual, hf_p50)
+        mse_val = mse(aligned_actual, hf_p50)
         rmse_val = rmse(aligned_actual, hf_p50)
         r2_val   = r2_score(aligned_actual, hf_p50)
 
-        print(f"sMAPE={mape_val:.2f}%  RMSE={rmse_val:.2f}  MAE={mae_val:.2f}  R\u00b2={r2_val:.4f}")
+        print(f"MSE={mse_val:.2f}  RMSE={rmse_val:.2f}  MAE={mae_val:.2f}  R\u00b2={r2_val:.4f}")
 
         key = (mode, h)
         all_results[key] = {
             "mae":  mae_val,
-            "mape": mape_val,
+            "mse": mse_val,
             "rmse": rmse_val,
             "r2":   r2_val,
         }
@@ -268,7 +268,7 @@ for (mode, h), metrics in all_results.items():
     rows.append({
         "mode":  mode,
         "horizon_h": h,
-        "sMAPE (%)": round(metrics["mape"], 4),
+        "MSE": round(metrics["mse"], 4),
         "RMSE":     round(metrics["rmse"], 4),
         "MAE":      round(metrics["mae"],  4),
         "R²":       round(metrics["r2"],   4),
@@ -365,7 +365,7 @@ for ax, h in zip(axes, HORIZONS):
 
     m = all_results[key]
     ax.set_title(
-        f"h={h}h  |  MAPE={m['mape']:.2f}%   RMSE={m['rmse']:.2f}   "
+        f"h={h}h  |  MSE={m['mse']:.2f}   RMSE={m['rmse']:.2f}   "
         f"MAE={m['mae']:.2f}   R²={m['r2']:.4f}",
         fontsize=10,
     )
@@ -390,7 +390,7 @@ for ax, h in zip(axes, HORIZONS):
         m   = all_results[key]
         backtest_preds[key]["p50"].plot(
             ax=ax,
-            label=f"{label}  sMAPE={m['mape']:.2f}%  R\u00b2={m['r2']:.4f}",
+            label=f"{label}  mse={m['mse']:.2f}  R\u00b2={m['r2']:.4f}",
             color=color,
             linewidth=1.5,
         )
@@ -402,14 +402,14 @@ for ax, h in zip(axes, HORIZONS):
 fig.tight_layout(rect=[0, 0, 1, 0.97])
 save_fig(fig, "chronos2_hourly_mode_comparison.png")
 
-# ── Plot 3: Metrics bar chart (MAPE per mode × horizon) ────────────────────
+# ── Plot 3: Metrics bar chart (MSE per mode × horizon) ────────────────────
 bar_width = 0.35
 x = np.arange(len(HORIZONS))
 
 fig, axes = plt.subplots(nrows=2, ncols=2, figsize=(14, 10))
 fig.suptitle("Metrics by Horizon & Covariate Mode", fontsize=14, fontweight="bold")
 
-metric_keys = [("MAPE (%)", "mape"), ("RMSE", "rmse"), ("MAE", "mae"), ("R²", "r2")]
+metric_keys = [("MSE", "mse"), ("RMSE", "rmse"), ("MAE", "mae"), ("R²", "r2")]
 
 for ax, (metric_label, metric_key) in zip(axes.flatten(), metric_keys):
     vals_none = [all_results[("none", h)][metric_key] for h in HORIZONS]
