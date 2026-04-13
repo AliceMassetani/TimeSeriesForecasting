@@ -1,0 +1,2 @@
+hidden_size,ff_size,num_blocks,dropout,batch_size,lr,val_RMSE,val_MAE,val_MSE,val_R2,test_RMSE,test_MAE,test_MSE,test_R2
+32,32,1,0.1,16,0.0005,3.357,2.0818,11.2693,0.9662,2.3718,1.4901,5.6254,0.9873

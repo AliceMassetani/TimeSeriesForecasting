@@ -1,0 +1,42 @@
+TSMixer Hyperparameter Search -- Results
+==================================================
+
+Fixed settings
+  forecast_horizon    : 2h
+  input_chunk_length  : 168
+  output_chunk_length : 8
+  n_epochs (max)      : 50  (EarlyStopping patience=10)
+  eval_mode           : SPLIT (fast evaluation on val block)
+  covariate mode      : calendar (hour, day_of_week, is_holiday)
+
+Searched axes
+  hidden_size         : [32, 64, 128]
+  ff_size             : [32, 64, 128]
+  num_blocks          : [1, 2, 3]
+  dropout             : [0.1, 0.2]
+  batch_size          : [16, 32, 64]
+  optimizer_kwargs    : [{'lr': 0.001}, {'lr': 0.0005}, {'lr': 0.0001}]
+
+Total combinations   : 486
+
+--------------------------------------------------
+BEST CONFIGURATION
+--------------------------------------------------
+  hidden_size         : 32
+  ff_size             : 32
+  num_blocks          : 1
+  dropout             : 0.1
+  batch_size          : 16
+  optimizer_kwargs    : {'lr': 0.0005}
+
+Validation metrics (split mode over val window)
+  RMSE : 3.3570
+  MAE  : 2.0818
+  MSE  : 11.2693
+  R2   : 0.9662
+
+Held-out test metrics (last 72h, never seen during search)
+  RMSE : 2.3718
+  MAE  : 1.4901
+  MSE  : 5.6254
+  R2   : 0.9873
