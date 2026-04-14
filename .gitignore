@@ -214,6 +214,17 @@ data/
 *.parquet
 *.json
 
+# Exclude some models
+models/
+checkpoints/
+*tsmixer_hourly_baseline_covariates.pt
+*tsmixer_hourly_baseline_covariates.pt.ckpt
+*tsmixer_champion_covariates.pt
+*tsmixer_champion_covariates.pt.ckpt
+*tsmixer_champion_target.pt
+*tsmixer_champion_target.pt.ckpt
+
+
 # --- Infrastructure & Framework (Antigravity/Google) ---
 # Exclude local logs and execution outputs
 .antigravity/
