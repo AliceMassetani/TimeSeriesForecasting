@@ -214,15 +214,6 @@ data/
 *.parquet
 *.json
 
-# Exclude model weights and training checkpoints
-# Saving these to Git would make the repository extremely slow
-models/
-checkpoints/
-*.pth
-*.h5
-*.ckpt
-*.bin
-
 # --- Infrastructure & Framework (Antigravity/Google) ---
 # Exclude local logs and execution outputs
 .antigravity/

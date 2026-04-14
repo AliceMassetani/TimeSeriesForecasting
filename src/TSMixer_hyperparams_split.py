@@ -67,7 +67,9 @@ logging.getLogger("pytorch_lightning").setLevel(logging.WARNING)
 # ---------------------------------------------------------------------------
 BASE_DIR    = os.path.dirname(os.path.abspath(__file__))
 DATA_PATH   = os.path.join(BASE_DIR, "..", "datasets", "Dati_processed.csv")
-OUTPUTS_DIR = os.path.join(BASE_DIR, "..", "outputs")
+BASE_OUTPUTS_DIR = os.path.join(BASE_DIR, "..", "outputs")
+SCRIPT_NAME = os.path.splitext(os.path.basename(__file__))[0]
+OUTPUTS_DIR = os.path.join(BASE_OUTPUTS_DIR, SCRIPT_NAME)
 os.makedirs(OUTPUTS_DIR, exist_ok=True)
 
 TARGET           = "InUseCapacity"

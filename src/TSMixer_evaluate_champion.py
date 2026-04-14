@@ -22,13 +22,17 @@ except Exception:
 # =============================================================================
 # 1. CONFIGURATION
 # =============================================================================
-
-# Paths
-DATA_DIR    = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "datasets"))
-OUTPUTS_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "outputs"))
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+DATA_PATH = os.path.join(BASE_DIR, "..", "datasets", "Dati_processed.csv")
+BASE_OUTPUTS_DIR = os.path.join(BASE_DIR, "..", "outputs")
+SCRIPT_NAME = os.path.splitext(os.path.basename(__file__))[0]
+OUTPUTS_DIR = os.path.join(BASE_OUTPUTS_DIR, SCRIPT_NAME)
 os.makedirs(OUTPUTS_DIR, exist_ok=True)
 
-CSV_FILE = os.path.join(DATA_DIR, "Dati_processed.csv")
+MODELS_DIR = os.path.join(BASE_DIR, "..", "models")
+os.makedirs(MODELS_DIR, exist_ok=True)
+
+CSV_FILE = DATA_PATH
 
 TARGET           = "InUseCapacity"
 INPUT_CHUNK_LEN  = 168
@@ -163,50 +167,70 @@ ct_df.index.name = "TimeStamp"
 ct_df.to_csv(os.path.join(OUTPUTS_DIR, "champion_tgt_backtest_p50_h2.csv"))
 
 # =============================================================================
-# 4. LOAD BASELINE METRICS FROM CSVS
+# 4. LOAD BASELINE METRICS
 # =============================================================================
 print("\n" + "=" * 65)
 print("2. LOADING BASELINE METRICS")
 print("=" * 65)
 
-# ── Baseline Target-Only ──
-tsm_target_df = pd.read_csv(os.path.join(OUTPUTS_DIR, "tsmixer_backtest_p50_h2.csv"))
-p50_tgt = tsm_target_df["InUseCapacity_P50"]
-act_tgt = tsm_target_df["InUseCapacity_Actual"]
-bt_rmse = ((p50_tgt - act_tgt)**2).mean()**0.5
-bt_mae  = (p50_tgt - act_tgt).abs().mean()
-bt_mse  = ((p50_tgt - act_tgt)**2).mean()
-bt_r2   = 1 - (((p50_tgt - act_tgt)**2).sum() / ((act_tgt - act_tgt.mean())**2).sum())
+# Fast-evaluate TSMixer Target-Only Baseline using ONLY previous results (NO re-training!)
+print("  Extracting Baseline TSMixer (Target-Only) metrics from previously saved CSV...")
+tsm_tgt_csv = os.path.join(BASE_OUTPUTS_DIR, "TSMixer_hourly", "tsmixer_backtest_p50_h2.csv")
+tsm_target_df = pd.read_csv(tsm_tgt_csv)
+p50_preds = tsm_target_df["InUseCapacity_P50"]
+actuals   = tsm_target_df["InUseCapacity_Actual"]
 
-base_tgt_dt = pd.to_datetime(tsm_target_df.get("TimeStamp", tsm_target_df.index))
-base_tgt_ts = TimeSeries.from_dataframe(pd.DataFrame({"TimeStamp": base_tgt_dt, "InUseCapacity_P50": p50_tgt.values}), time_col="TimeStamp", value_cols="InUseCapacity_P50")
+bt_rmse = ((p50_preds - actuals)**2).mean()**0.5
+bt_mae  = (p50_preds - actuals).abs().mean()
+bt_mse  = ((p50_preds - actuals)**2).mean()
+bt_r2 = 1 - (((p50_preds - actuals)**2).sum() / ((actuals - actuals.mean())**2).sum())
+print(f"    -> Extracted Target-Only Baseline: RMSE={bt_rmse:.4f}, R2={bt_r2:.4f}")
 
-# ── Baseline Covariates ──
+# Target TimeSeries instance for plotting
+_dt_tgt = pd.to_datetime(tsm_target_df.get("TimeStamp", tsm_target_df.index))
+base_tgt_ts = TimeSeries.from_dataframe(pd.DataFrame({"TimeStamp": _dt_tgt, "InUseCapacity_P50": p50_preds.values}), time_col="TimeStamp", value_cols="InUseCapacity_P50")
+
+# Load Baseline Covariates DataFrame
+print("  Extracting Baseline TSMixer (Calendar Covariates) metrics from previously saved CSV...")
+base_cov_ts = None
 try:
-    tsm_cal_df = pd.read_csv(os.path.join(OUTPUTS_DIR, "tsmixer_calendar_backtest_p50_h2.csv"))
-    p50_cov = tsm_cal_df["InUseCapacity_P50"]
-    act_cov = tsm_cal_df["InUseCapacity_Actual"]
-    bc_rmse = ((p50_cov - act_cov)**2).mean()**0.5
-    bc_mae  = (p50_cov - act_cov).abs().mean()
-    bc_mse  = ((p50_cov - act_cov)**2).mean()
-    bc_r2   = 1 - (((p50_cov - act_cov)**2).sum() / ((act_cov - act_cov.mean())**2).sum())
+    tsm_cal_csv = os.path.join(BASE_OUTPUTS_DIR, "TSMixer_hourly", "tsmixer_calendar_backtest_p50_h2.csv")
+    tsm_cal_df = pd.read_csv(tsm_cal_csv)
+    p50_cal = tsm_cal_df["InUseCapacity_P50"]
+    act_cal = tsm_cal_df["InUseCapacity_Actual"]
+    bc_rmse = ((p50_cal - act_cal)**2).mean()**0.5
+    bc_mae  = (p50_cal - act_cal).abs().mean()
+    bc_mse  = ((p50_cal - act_cal)**2).mean()
+    bc_r2   = 1 - (((p50_cal - act_cal)**2).sum() / ((act_cal - act_cal.mean())**2).sum())
+    print(f"    -> Extracted Calendar Baseline: RMSE={bc_rmse:.4f}, R2={bc_r2:.4f}")
     
-    base_cov_dt = pd.to_datetime(tsm_cal_df.get("TimeStamp", tsm_cal_df.index))
-    base_cov_ts = TimeSeries.from_dataframe(pd.DataFrame({"TimeStamp": base_cov_dt, "InUseCapacity_P50": p50_cov.values}), time_col="TimeStamp", value_cols="InUseCapacity_P50")
-    print("  Loaded: Baseline Covariates from CSV")
+    _dt_cov = pd.to_datetime(tsm_cal_df.get("TimeStamp", tsm_cal_df.index))
+    base_cov_ts = TimeSeries.from_dataframe(pd.DataFrame({"TimeStamp": _dt_cov, "InUseCapacity_P50": p50_cal.values}), time_col="TimeStamp", value_cols="InUseCapacity_P50")
 except Exception as e:
-    print(f"  WARNING: Unable to load Calendar baseline CSV. ({e})")
+    print(f"    -> WARNING: Unable to load Calendar baseline CSV. ({e})")
     bc_rmse = bc_mae = bc_mse = bc_r2 = 0.0
-    base_cov_ts = None
 
-# ── TimesFM ──
-tfm_metrics_df = pd.read_csv(os.path.join(OUTPUTS_DIR, "timesfm2p5_hourly_metrics.csv"))
-tfm_h2  = tfm_metrics_df[tfm_metrics_df["horizon_h"] == FORECAST_HORIZON].iloc[0]
+# Load TimesFM
+tfm_csv = os.path.join(BASE_OUTPUTS_DIR, "TimesFM2p5_hourly", "timesfm2p5_hourly_metrics.csv")
+tfm_metrics_df = pd.read_csv(tfm_csv)
+tfm_h2 = tfm_metrics_df[tfm_metrics_df["horizon_h"] == FORECAST_HORIZON].iloc[0]
 tfm_rmse = float(tfm_h2["RMSE"])
 tfm_mae  = float(tfm_h2["MAE"])
 tfm_mse  = float(tfm_h2["MSE"])
 tfm_r2   = float(tfm_h2.iloc[-1])
 print("  Loaded: TimesFM 2.5 metrics")
+
+# Save Champion Models
+try:
+    cov_model_path = os.path.join(MODELS_DIR, "tsmixer_champion_covariates.pt")
+    champ_cov_model.save(cov_model_path)
+    print(f"  Saved Models: {cov_model_path}")
+    
+    tgt_model_path = os.path.join(MODELS_DIR, "tsmixer_champion_target.pt")
+    champ_tgt_model.save(tgt_model_path)
+    print(f"  Saved Models: {tgt_model_path}")
+except Exception as e:
+    print(f"  Warning: Could not save models to .pt files: {e}")
 
 # =============================================================================
 # 5. GENERATE PLOTS

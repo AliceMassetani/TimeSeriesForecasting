@@ -63,12 +63,18 @@ logging.getLogger("pytorch_lightning").setLevel(logging.WARNING)
 
 
 # ---------------------------------------------------------------------------
-# Configuration — keep identical to chronos2_hourly.py for a fair comparison
-# ---------------------------------------------------------------------------
-BASE_DIR    = os.path.dirname(os.path.abspath(__file__))
-DATA_PATH   = os.path.join(BASE_DIR, "..", "datasets", "Dati_processed.csv")
-OUTPUTS_DIR = os.path.join(BASE_DIR, "..", "outputs")
+# =============================================================================
+# 1. CONFIGURATION
+# =============================================================================
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+DATA_PATH = os.path.join(BASE_DIR, "..", "datasets", "Dati_processed.csv")
+BASE_OUTPUTS_DIR = os.path.join(BASE_DIR, "..", "outputs")
+SCRIPT_NAME = os.path.splitext(os.path.basename(__file__))[0]
+OUTPUTS_DIR = os.path.join(BASE_OUTPUTS_DIR, SCRIPT_NAME)
 os.makedirs(OUTPUTS_DIR, exist_ok=True)
+
+MODELS_DIR = os.path.join(BASE_DIR, "..", "models")
+os.makedirs(MODELS_DIR, exist_ok=True)
 
 TARGET          = "InUseCapacity"
 HORIZONS        = [2, 3, 4]            # hours ahead to evaluate
@@ -277,6 +283,14 @@ for mode in COVARIATE_MODES:
         verbose=True,
     )
 
+    try:
+        _suffix = "covariates" if mode == "calendar" else "target"
+        _m_path = os.path.join(MODELS_DIR, f"tsmixer_hourly_baseline_{_suffix}.pt")
+        model.save(_m_path)
+        print(f"    [Saved Model] -> {_m_path}")
+    except Exception as e:
+        print(f"    [Warning] Could not save model: {e}")
+
     for h in HORIZONS:
         print(f"    Backtesting h={h}…", end=" ", flush=True)
 
@@ -345,7 +359,7 @@ for h in HORIZONS:
 print("  Saved TSMixer backtest P50 CSVs for Target-Only (tsmixer_backtest_p50_h*.csv) and Calendar (tsmixer_calendar_backtest_p50_h*.csv)")
 
 # Load Chronos-2 metrics (mode='none' only — for fair target-only comparison)
-chronos_bench_path = os.path.join(OUTPUTS_DIR, "chronos2_hourly_metrics.csv")
+chronos_bench_path = os.path.join(BASE_OUTPUTS_DIR, "chronos2_hourly", "chronos2_hourly_metrics.csv")
 chronos_bench = None
 if os.path.exists(chronos_bench_path):
     cdf = pd.read_csv(chronos_bench_path, index_col=[0, 1])
@@ -354,7 +368,7 @@ if os.path.exists(chronos_bench_path):
         print(f"  Loaded Chronos-2 hourly benchmark (mode='none').")
 
 # Load TimesFM-2.5 metrics
-timesfm_bench_path = os.path.join(OUTPUTS_DIR, "timesfm2p5_hourly_metrics.csv")
+timesfm_bench_path = os.path.join(BASE_OUTPUTS_DIR, "timesfm2p5_hourly", "timesfm2p5_hourly_metrics.csv")
 timesfm_bench = None
 if os.path.exists(timesfm_bench_path):
     tdf = pd.read_csv(timesfm_bench_path, index_col=[0, 1])
@@ -514,7 +528,7 @@ cross_model_data["TSMixer"] = {
 }
 
 # Try to load Chronos-2 P50 CSVs
-c2_csvs = {h: os.path.join(OUTPUTS_DIR, f"chronos2_backtest_p50_h{h}.csv") for h in HORIZONS}
+c2_csvs = {h: os.path.join(BASE_OUTPUTS_DIR, "chronos2_hourly", f"chronos2_backtest_p50_h{h}.csv") for h in HORIZONS}
 if all(os.path.exists(p) for p in c2_csvs.values()):
     cross_model_data["Chronos-2"] = {}
     for h in HORIZONS:
@@ -524,7 +538,7 @@ else:
     print("  ⚠ Chronos-2 backtest P50 CSVs not found — re-run chronos2_hourly.py to enable cross-model plot.")
 
 # Try to load TimesFM P50 CSVs
-tfm_csvs = {h: os.path.join(OUTPUTS_DIR, f"timesfm2p5_backtest_p50_h{h}.csv") for h in HORIZONS}
+tfm_csvs = {h: os.path.join(BASE_OUTPUTS_DIR, "timesfm2p5_hourly", f"timesfm2p5_backtest_p50_h{h}.csv") for h in HORIZONS}
 if all(os.path.exists(p) for p in tfm_csvs.values()):
     cross_model_data["TimesFM-2.5"] = {}
     for h in HORIZONS:
@@ -677,6 +691,15 @@ save_fig(fig, "tsmixer_hourly_operational_forecast.png")
 # Done
 # ---------------------------------------------------------------------------
 print("\n" + "=" * 65)
+print("9. BAR CHART METRICS COMPARISON (vs chronos2)")
+print("=" * 65)
+
+chronos_csv_path = os.path.join(BASE_OUTPUTS_DIR, "chronos2_hourly", "chronos2_hourly_metrics.csv")
+try:
+    chronos_metrics_df = pd.read_csv(chronos_csv_path)
+except:
+    pass
+
 print("DONE — all outputs saved to /outputs/")
 print("=" * 65)
 print(f"  tsmixer_hourly_metrics.csv")

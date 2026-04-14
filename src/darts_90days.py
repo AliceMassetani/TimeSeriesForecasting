@@ -14,7 +14,8 @@ from darts.utils.statistics import plot_residuals_analysis
 def run_native_darts_tournament():
     base_dir = os.path.dirname(os.path.abspath(__file__))
     data_path = os.path.join(base_dir, '..', 'datasets', 'Dati_processed.csv')
-    outputs_dir = os.path.join(base_dir, '..', 'outputs')
+    script_name = os.path.splitext(os.path.basename(__file__))[0]
+    outputs_dir = os.path.join(base_dir, '..', 'outputs', script_name)
     os.makedirs(outputs_dir, exist_ok=True)
 
     print("--- 1. Data Loading and Preparation ---")

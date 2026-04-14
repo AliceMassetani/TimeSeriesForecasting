@@ -28,7 +28,8 @@ def run_hyperparameter_search():
     try:
         base_dir = os.path.dirname(os.path.abspath(__file__))
         data_path = os.path.join(base_dir, '..', 'datasets', 'Dati_processed.csv')
-        outputs_dir = os.path.join(base_dir, '..', 'outputs')
+        script_name = os.path.splitext(os.path.basename(__file__))[0]
+        outputs_dir = os.path.join(base_dir, '..', 'outputs', script_name)
         os.makedirs(outputs_dir, exist_ok=True)
         report_path = os.path.join(outputs_dir, 'hyperparameter_results.txt')
 
