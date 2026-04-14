@@ -198,6 +198,7 @@ best_roll_mae  = float("inf")
 best_roll_mse  = float("inf")
 best_roll_r2   = float("inf")
 
+
 for i, values in enumerate(tqdm(combos, desc="RollingSearch", unit="combo")):
     params      = dict(zip(keys, values))
     full_params = {
@@ -257,6 +258,9 @@ for i, values in enumerate(tqdm(combos, desc="RollingSearch", unit="combo")):
     gc.collect()
     if torch and torch.cuda.is_available():
         torch.cuda.empty_cache()
+
+
+# -----------------------------------------------------------------------------
 
 lr_value = best_params.get("optimizer_kwargs", {}).get("lr", "N/A")
 
@@ -428,9 +432,227 @@ plt.close(fig)
 print(f"  Saved: {plot_path}")
 
 # ---------------------------------------------------------------------------
+# 9. Comparison Plots (TSMixer Hourly vs TimesFM vs Rolling)
+# ---------------------------------------------------------------------------
+print("\n" + "=" * 65)
+print("9. COMPARISON PLOT: TSMixer Hourly vs TimesFM")
+print("=" * 65)
+
+# Load existing csv backtest predictions and convert to TimeSeries
+tsm_hourly_df = pd.read_csv(os.path.join(OUTPUTS_DIR, "tsmixer_backtest_p50_h2.csv"))
+tsm_ds = TimeSeries.from_dataframe(tsm_hourly_df, time_col="TimeStamp", value_cols="InUseCapacity_P50")
+
+tfm_hourly_df = pd.read_csv(os.path.join(OUTPUTS_DIR, "timesfm2p5_backtest_p50_h2.csv"))
+tfm_ds = TimeSeries.from_dataframe(tfm_hourly_df, time_col="TimeStamp", value_cols="InUseCapacity_P50")
+
+fig, ax = plt.subplots(figsize=(16, 5))
+fig.suptitle("Comparison: Rolling Gridsearch vs Baseline TSMixer vs TimesFM (h=2)", fontsize=12, fontweight="bold")
+
+act_aligned.plot(ax=ax, label="Actual Capacity", color="black", linewidth=2.5, linestyle="dashed")
+tsm_ds.plot(ax=ax, label="TSMixer Hourly Baseline", color="#3498db", linewidth=1.5, alpha=0.8)
+tfm_ds.plot(ax=ax, label="TimesFM 2.5", color="#e74c3c", linewidth=1.5, alpha=0.8)
+hf_p50.plot(ax=ax, label=f"TSMixer Rolling (RMSE={test_rmse:.2f})", color="#2ecc71", linewidth=2.0)
+
+ax.set_ylabel("InUseCapacity")
+ax.legend(fontsize=9)
+ax.grid(True, alpha=0.3)
+fig.tight_layout()
+
+plot9_path = os.path.join(OUTPUTS_DIR, "plot_comparison_tsmixer_rolling_vs_baselines.png")
+fig.savefig(plot9_path, dpi=150, bbox_inches="tight")
+plt.close(fig)
+print(f"  Saved: {plot9_path}")
+
+# ---------------------------------------------------------------------------
+# 10. Comparison Plot (Rolling vs Split Search)
+# ---------------------------------------------------------------------------
+print("\n" + "=" * 65)
+print("10. COMPARISON PLOT: Rolling vs Split Search")
+print("=" * 65)
+
+# Best params for Split Model (haded to load from file previously)
+split_params = {
+    'hidden_size': 32, 
+    'ff_size': 32, 
+    'num_blocks': 1, 
+    'dropout': 0.1, 
+    'batch_size': 16, 
+    'optimizer_kwargs': {'lr': 0.0005}
+}
+print("  Training mocked Split champion...")
+split_params_full = {
+    **split_params,
+    **FIXED_PARAMS,
+    "pl_trainer_kwargs": {"enable_progress_bar": False},
+}
+split_model = TSMixerModel(**split_params_full)
+split_model.fit(series=train_val_series, future_covariates=future_cov, verbose=False)
+
+split_hf_list = split_model.historical_forecasts(
+    series=series,
+    future_covariates=future_cov,
+    start=test_series.start_time(),
+    forecast_horizon=FORECAST_HORIZON,
+    stride=1,
+    num_samples=200,
+    retrain=False,
+    verbose=False,
+)
+split_hf_p50 = concatenate(split_hf_list).quantile(0.5)
+split_test_rmse = rmse(act_aligned, split_hf_p50)
+
+fig, ax = plt.subplots(figsize=(16, 5))
+fig.suptitle("Comparison: Rolling Search vs Split Search (h=2 Test)", fontsize=12, fontweight="bold")
+act_aligned.plot(ax=ax, label="Actual Capacity", color="black", linewidth=2.5, linestyle="dashed")
+hf_p50.plot(ax=ax, label=f"Rolling Search (Test RMSE={test_rmse:.2f})", color="#2ecc71", linewidth=2.0)
+split_hf_p50.plot(ax=ax, label=f"Split Search (Test RMSE={split_test_rmse:.2f})", color="#e67e22", linewidth=2.0)
+
+ax.set_ylabel("InUseCapacity")
+ax.legend(fontsize=9)
+ax.grid(True, alpha=0.3)
+fig.tight_layout()
+
+plot10_path = os.path.join(OUTPUTS_DIR, "plot_comparison_tsmixer_rolling_vs_split.png")
+fig.savefig(plot10_path, dpi=150, bbox_inches="tight")
+plt.close(fig)
+print(f"  Saved: {plot10_path}")
+
+# ---------------------------------------------------------------------------
+# 11. EXTRA: Bar Chart Comparison (Metrics vs Baselines)
+# ---------------------------------------------------------------------------
+print("\n" + "=" * 65)
+print("11. EXTRA: BAR CHART METRICS COMPARISON (vs Baselines)")
+print("=" * 65)
+
+# Fast-evaluate TSMixer Target-Only Baseline using ONLY previous results (NO re-training!)
+print("  Extracting Baseline TSMixer (Target-Only) metrics from previously saved CSV...")
+tsm_target_df = pd.read_csv(os.path.join(OUTPUTS_DIR, "tsmixer_backtest_p50_h2.csv"))
+p50_preds = tsm_target_df["InUseCapacity_P50"]
+actuals   = tsm_target_df["InUseCapacity_Actual"]
+
+base_tgt_rmse = ((p50_preds - actuals)**2).mean()**0.5
+base_tgt_mae  = (p50_preds - actuals).abs().mean()
+base_tgt_mse  = ((p50_preds - actuals)**2).mean()
+# R2 formula: 1 - (SS_res / SS_tot)
+ss_res = ((p50_preds - actuals)**2).sum()
+ss_tot = ((actuals - actuals.mean())**2).sum()
+base_tgt_r2 = 1 - (ss_res / ss_tot)
+
+print(f"    -> Extracted Target-Only Baseline: RMSE={base_tgt_rmse:.4f}, R2={base_tgt_r2:.4f}")
+
+print("  Extracting Baseline TSMixer (Calendar Covariates) metrics from previously saved CSV...")
+try:
+    tsm_cal_df = pd.read_csv(os.path.join(OUTPUTS_DIR, "tsmixer_calendar_backtest_p50_h2.csv"))
+    p50_cal = tsm_cal_df["InUseCapacity_P50"]
+    act_cal = tsm_cal_df["InUseCapacity_Actual"]
+    base_cov_rmse = ((p50_cal - act_cal)**2).mean()**0.5
+    base_cov_mae  = (p50_cal - act_cal).abs().mean()
+    base_cov_mse  = ((p50_cal - act_cal)**2).mean()
+    base_cov_r2   = 1 - (((p50_cal - act_cal)**2).sum() / ((act_cal - act_cal.mean())**2).sum())
+    print(f"    -> Extracted Calendar Baseline: RMSE={base_cov_rmse:.4f}, R2={base_cov_r2:.4f}")
+except Exception as e:
+    print(f"    -> WARNING: Unable to load Calendar baseline CSV. ({e})")
+    base_cov_rmse = base_cov_mae = base_cov_mse = base_cov_r2 = 0.0
+
+# Load TimesFM
+tfm_metrics_df = pd.read_csv(os.path.join(OUTPUTS_DIR, "timesfm2p5_hourly_metrics.csv"))
+tfm_h2 = tfm_metrics_df[tfm_metrics_df["horizon_h"] == FORECAST_HORIZON].iloc[0]
+tfm_rmse = float(tfm_h2["RMSE"])
+tfm_mae  = float(tfm_h2["MAE"])
+tfm_mse  = float(tfm_h2["MSE"])
+tfm_r2   = float(tfm_h2.iloc[-1]) # R2 is the last column
+
+metrics_data = [
+    ("Champion Rolling",        "#2ecc71", [test_mse, test_rmse, test_mae, test_r2]),
+    ("Baseline TSMixer (Cov)",  "#3498db", [base_cov_mse, base_cov_rmse, base_cov_mae, base_cov_r2]),
+    ("Baseline TSMixer (Tgt)",  "#8e44ad", [base_tgt_mse, base_tgt_rmse, base_tgt_mae, base_tgt_r2]),
+    ("TimesFM 2.5",             "#e67e22", [tfm_mse, tfm_rmse, tfm_mae, tfm_r2]),
+]
+
+metric_labels = ["MSE", "RMSE", "MAE", "R²"]
+
+fig, axes = plt.subplots(nrows=1, ncols=4, figsize=(18, 5))
+fig.suptitle(f"Metrics Comparison at Horizon h={FORECAST_HORIZON} (From Static CSVs)", fontsize=14, fontweight="bold")
+
+n_bars = len(metrics_data)
+bw = 0.8 / n_bars
+x = np.arange(1)
+offsets = np.linspace(-(n_bars - 1) / 2 * bw, (n_bars - 1) / 2 * bw, n_bars)
+
+all_legend_bars = []
+for idx, ax in enumerate(axes):
+    for model_idx, (model_name, color, values) in enumerate(metrics_data):
+        val = values[idx]
+        bar = ax.bar(x + offsets[model_idx], [val], bw, color=color, alpha=0.85)
+        if idx == 0:
+            all_legend_bars.append((bar, model_name))
+        
+        ax.text(
+            bar[0].get_x() + bar[0].get_width() / 2.0,
+            val,
+            f"{val:.3f}",
+            ha="center", va="bottom", fontsize=10, fontweight="bold",
+        )
+    
+    ax.set_title(metric_labels[idx], fontweight="bold")
+    ax.set_xticks([])
+    ax.grid(axis="y", alpha=0.3)
+
+fig.legend([b[0] for b in all_legend_bars], [n[1] for n in all_legend_bars], loc='lower center', ncol=4, bbox_to_anchor=(0.5, -0.05), fontsize=10)
+fig.tight_layout(rect=[0, 0.05, 1, 0.96])
+
+plot11_path = os.path.join(OUTPUTS_DIR, "plot_comparison_metrics_bars.png")
+fig.savefig(plot11_path, dpi=150, bbox_inches="tight")
+plt.close(fig)
+print(f"  Saved: {plot11_path}")
+
+# ---------------------------------------------------------------------------
+# 12. EXTRA: Forecast Curve Comparison (Champion vs Base)
+# ---------------------------------------------------------------------------
+print("\n" + "=" * 65)
+print("12. EXTRA: FORECAST CURVE COMPARISON (Champion vs Base)")
+print("=" * 65)
+
+fig, ax = plt.subplots(figsize=(16, 5))
+fig.suptitle(f"Forecast Comparison: Champion vs Baselines (h={FORECAST_HORIZON})", fontsize=12, fontweight="bold")
+
+# Plot Actuals
+act_aligned.plot(ax=ax, label="Actual Capacity", color="black", linewidth=2.5, linestyle="dashed")
+
+# Plot Base Target
+_base_tgt_dt = pd.to_datetime(tsm_target_df.get("TimeStamp", tsm_target_df.index))
+_df_tgt = pd.DataFrame({"TimeStamp": _base_tgt_dt, "InUseCapacity_P50": p50_preds.values})
+base_tgt_ts = TimeSeries.from_dataframe(_df_tgt, time_col="TimeStamp", value_cols="InUseCapacity_P50")
+base_tgt_ts.plot(ax=ax, label=f"Baseline Target-Only (RMSE={base_tgt_rmse:.2f}, R²={base_tgt_r2:.2f})", color="#6c3483", linewidth=1.5, alpha=0.7)
+
+# Plot Base Covariates
+if "tsm_cal_df" in locals():
+    _base_cov_dt = pd.to_datetime(tsm_cal_df.get("TimeStamp", tsm_cal_df.index))
+    _df_cov = pd.DataFrame({"TimeStamp": _base_cov_dt, "InUseCapacity_P50": p50_cal.values})
+    base_cov_ts = TimeSeries.from_dataframe(_df_cov, time_col="TimeStamp", value_cols="InUseCapacity_P50")
+    base_cov_ts.plot(ax=ax, label=f"Baseline Calendar Cov. (RMSE={base_cov_rmse:.2f}, R²={base_cov_r2:.2f})", color="#3498db", linewidth=1.5, alpha=0.9)
+
+# Plot Champion
+hf_p50.plot(ax=ax, label=f"Champion Rolling (RMSE={test_rmse:.2f}, R²={test_r2:.2f})", color="#2ecc71", linewidth=2.5)
+
+ax.set_ylabel("InUseCapacity")
+ax.legend(fontsize=9, loc='upper left')
+ax.grid(True, alpha=0.3)
+fig.tight_layout()
+
+plot12_path = os.path.join(OUTPUTS_DIR, "plot_comparison_forecast_champion_vs_base.png")
+fig.savefig(plot12_path, dpi=150, bbox_inches="tight")
+plt.close(fig)
+print(f"  Saved: {plot12_path}")
+
+# ---------------------------------------------------------------------------
 # Cleanup
 # ---------------------------------------------------------------------------
-del final_model, hf_list, hf_concat, hf_p50
+try:
+    del final_model, hf_list, hf_concat, hf_p50, split_model, split_hf_list, split_hf_p50
+    del base_target_model, base_cov_model
+except:
+    pass
 gc.collect()
 if torch and torch.cuda.is_available():
     torch.cuda.empty_cache()
@@ -441,3 +663,5 @@ print("=" * 65)
 print("  tsmixer_hyperparams_rolling_results.csv")
 print("  tsmixer_hyperparams_rolling_results.txt")
 print("  tsmixer_hyperparams_rolling_best_backtest.png")
+print("  plot_comparison_tsmixer_rolling_vs_baselines.png")
+print("  plot_comparison_tsmixer_rolling_vs_split.png")

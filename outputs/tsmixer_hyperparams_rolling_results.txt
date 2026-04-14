@@ -35,7 +35,7 @@ Rolling metrics (val window, h=2, stride=1)
   R2   : 0.9717
 
 Held-out test metrics (last 72h)
-  RMSE : 2.1166
-  MAE  : 1.3963
-  MSE  : 4.4800
-  R2   : 0.9899
+  RMSE : 2.1185
+  MAE  : 1.4441
+  MSE  : 4.4881
+  R2   : 0.9898

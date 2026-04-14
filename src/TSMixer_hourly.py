@@ -322,6 +322,7 @@ for mode in COVARIATE_MODES:
 
 # Save per-horizon P50 predictions so that cross-model plots can load them
 for h in HORIZONS:
+    # Target-Only
     p50_series = backtest_preds[("none", h)]["p50"]
     actual_series = backtest_preds[("none", h)]["actual"]
     p50_df = pd.DataFrame({
@@ -330,7 +331,18 @@ for h in HORIZONS:
     }, index=p50_series.time_index)
     p50_df.index.name = "TimeStamp"
     p50_df.to_csv(os.path.join(OUTPUTS_DIR, f"tsmixer_backtest_p50_h{h}.csv"))
-print("  Saved TSMixer backtest P50 CSVs (tsmixer_backtest_p50_h*.csv)")
+    
+    # Calendar Covariates
+    p50_cov_series = backtest_preds[("calendar", h)]["p50"]
+    actual_cov_series = backtest_preds[("calendar", h)]["actual"]
+    p50_cov_df = pd.DataFrame({
+        "InUseCapacity_P50":    p50_cov_series.values().flatten(),
+        "InUseCapacity_Actual": actual_cov_series.values().flatten(),
+    }, index=p50_cov_series.time_index)
+    p50_cov_df.index.name = "TimeStamp"
+    p50_cov_df.to_csv(os.path.join(OUTPUTS_DIR, f"tsmixer_calendar_backtest_p50_h{h}.csv"))
+
+print("  Saved TSMixer backtest P50 CSVs for Target-Only (tsmixer_backtest_p50_h*.csv) and Calendar (tsmixer_calendar_backtest_p50_h*.csv)")
 
 # Load Chronos-2 metrics (mode='none' only — for fair target-only comparison)
 chronos_bench_path = os.path.join(OUTPUTS_DIR, "chronos2_hourly_metrics.csv")
