@@ -1,0 +1,22 @@
+--- Hyperparameter Search Results ---
+
+ARIMA:
+Best Params: {'p': 2, 'd': 0, 'q': 0, 'seasonal_order': (0, 1, 0, 24)}
+RMSE: 10.8599
+MAE: 7.4544
+MSE: 188.1737
+R2: -3.1215
+
+Prophet:
+Best Params: {'country_holidays': 'IT', 'seasonality_prior_scale': 5.0, 'changepoint_prior_scale': 0.0005}
+RMSE: 8.9937
+MAE: 8.0974
+MSE: 85.1823
+R2: -8.6761
+
+Chronos-2:
+Best Params: {'hub_model_name': 'amazon/chronos-2', 'input_chunk_length': 1024, 'output_chunk_length': 1024}
+RMSE: 2.0357
+MAE: 1.4293
+MSE: 4.8863
+R2: 0.9305

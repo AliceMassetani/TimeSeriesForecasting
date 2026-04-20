@@ -210,20 +210,20 @@ __marimo__/
 
 # Exclude large datasets (CSV, Parquet, etc.)
 # These should be managed via cloud storage, not version control
-datasets/
 data/
-*.csv
 *.parquet
 *.json
 
-# Exclude model weights and training checkpoints
-# Saving these to Git would make the repository extremely slow
+# Exclude some models
 models/
 checkpoints/
-*.pth
-*.h5
-*.ckpt
-*.bin
+*tsmixer_hourly_baseline_covariates.pt
+*tsmixer_hourly_baseline_covariates.pt.ckpt
+*tsmixer_champion_covariates.pt
+*tsmixer_champion_covariates.pt.ckpt
+*tsmixer_champion_target.pt
+*tsmixer_champion_target.pt.ckpt
+
 
 # --- Infrastructure & Framework (Antigravity/Google) ---
 # Exclude local logs and execution outputs
