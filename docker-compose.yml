@@ -1,0 +1,109 @@
+# ============================================================================
+# DOCKER COMPOSE - TimeSeriesForcasting
+# ============================================================================
+# Avvio:    docker compose up -d
+# Stop:     docker compose down
+# Reset DB: docker compose down -v    (elimina tutti i dati)
+# Log:      docker compose logs -f
+# ============================================================================
+
+services:
+
+  # --------------------------------------------------------------------------
+  # Database MariaDB
+  # La cartella ./database viene montata in /docker-entrypoint-initdb.d/
+  # MariaDB esegue automaticamente i file .sql al primo avvio.
+  # --------------------------------------------------------------------------
+  mariadb:
+    image: mariadb:11.8
+    container_name: TimeSeriesForcasting_database
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-TimeSeriesForcasting_db}
+      MYSQL_USER: ${MYSQL_USER}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+    volumes:
+      - mariadb_data:/var/lib/mysql
+      - ./database:/docker-entrypoint-initdb.d
+    ports:
+      - "3306:3306"
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - TimeSeriesForcasting_network
+
+  # --------------------------------------------------------------------------
+  # Backend Python
+  # Accessibile direttamente su http://localhost:8000
+  # --------------------------------------------------------------------------
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: TimeSeriesForcasting_backend
+    restart: unless-stopped
+    environment:
+      DB_HOST: mariadb
+      DB_PORT: 3306
+      DB_USER: ${MYSQL_USER}      
+      DB_PASSWORD: ${MYSQL_PASSWORD}
+      DB_NAME: ${MYSQL_DATABASE:-TimeSeriesForcasting_db}
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend:/app
+    command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+    depends_on:
+      mariadb:
+        condition: service_healthy
+    networks:
+      - TimeSeriesForcasting_network
+
+  # --------------------------------------------------------------------------
+  # Frontend Angular
+  # Accessibile direttamente su http://localhost:5173
+  # --------------------------------------------------------------------------
+  #frontend:
+  #  build:
+  #    context: ./frontend
+  #    dockerfile: Dockerfile
+  #  container_name: TimeSeriesForcasting_frontend
+  #  restart: unless-stopped
+  #  ports:
+  #    - "4200:4200"
+  #  volumes:
+  #    - ./frontend:/app
+  #  networks:
+  #    - TimeSeriesForcasting_network
+
+  # --------------------------------------------------------------------------
+  # phpMyAdmin - Interfaccia grafica per il database
+  # Accessibile su http://localhost:8081
+  # --------------------------------------------------------------------------
+  phpmyadmin:
+    image: phpmyadmin:5.2
+    container_name: TimeSeriesForcasting_phpmyadmin
+    restart: unless-stopped
+    environment:
+      PMA_HOST: mariadb
+      PMA_PORT: 3306
+      PMA_USER: root
+      PMA_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+    ports:
+      - "8081:80"
+    depends_on:
+      mariadb:
+        condition: service_healthy
+    networks:
+      - TimeSeriesForcasting_network
+
+networks:
+  TimeSeriesForcasting_network:
+    driver: bridge
+
+volumes:
+  mariadb_data:

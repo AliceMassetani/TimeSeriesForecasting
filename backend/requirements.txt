@@ -1,0 +1,22 @@
+# --- Web Framework ---
+fastapi==0.110.0
+uvicorn[standard]==0.27.1
+
+# --- Database (MariaDB/MySQL) ---
+sqlalchemy==2.0.28    # L'ORM per gestire il DB con codice Python
+pymysql==1.1.0        # Il driver per connettersi a MariaDB
+cryptography==42.0.5  # Necessario per la gestione sicura delle password del DB
+
+# --- Data Science & Forecasting (Il cuore del tuo modello) ---
+pandas                # Per la manipolazione dei dati temporali
+numpy                 # Per i calcoli numerici
+scikit-learn          # Per i modelli di machine learning
+statsmodels           # Per l'analisi statistica delle serie temporali
+darts                 # La libreria principale per le serie temporali
+matplotlib            # Necessaria se vuoi generare grafici dei modelli
+
+# --- Utility ---
+python-multipart      # Necessario se riceverai file o form dal frontend
+python-dotenv         # Per leggere il file .env se necessario dal codice
+
+
