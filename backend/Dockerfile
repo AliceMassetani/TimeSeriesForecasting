@@ -1,5 +1,5 @@
-# Usa un'immagine base ufficiale di Python leggera
-FROM python:3.11-slim
+# Usa un'immagine base ufficiale di Python con build tools
+FROM python:3.12
 
 # Installa le dipendenze di sistema necessarie per MariaDB
 RUN apt-get update && apt-get install -y \
@@ -16,8 +16,10 @@ WORKDIR /app
 # Copia il file requirements.txt nella directory di lavoro
 COPY requirements.txt .
 
-# Installa le dipendenze
-RUN pip install --no-cache-dir -r requirements.txt
+# Installa PyTorch CPU-only (saves ~1GB) then all dependencies
+RUN pip install --no-cache-dir \
+    torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu && \
+    pip install --no-cache-dir -r requirements.txt
 
 # Copia il resto del codice sorgente nel container
 COPY . .

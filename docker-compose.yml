@@ -17,6 +17,8 @@ services:
   mariadb:
     image: mariadb:11.8
     container_name: TimeSeriesForcasting_database
+    env_file:
+      - .env
     restart: unless-stopped
     environment:
       MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
@@ -27,7 +29,7 @@ services:
       - mariadb_data:/var/lib/mysql
       - ./database:/docker-entrypoint-initdb.d
     ports:
-      - "3306:3306"
+      - "3380:3306"
     healthcheck:
       test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
       interval: 10s
@@ -45,6 +47,8 @@ services:
       context: ./backend
       dockerfile: Dockerfile
     container_name: TimeSeriesForcasting_backend
+    env_file:
+      - .env
     restart: unless-stopped
     environment:
       DB_HOST: mariadb
@@ -65,7 +69,7 @@ services:
 
   # --------------------------------------------------------------------------
   # Frontend Angular
-  # Accessibile direttamente su http://localhost:5173
+  # Accessibile direttamente su http://localhost:4200
   # --------------------------------------------------------------------------
   #frontend:
   #  build:
@@ -87,6 +91,8 @@ services:
   phpmyadmin:
     image: phpmyadmin:5.2
     container_name: TimeSeriesForcasting_phpmyadmin
+    env_file:
+      - .env
     restart: unless-stopped
     environment:
       PMA_HOST: mariadb
