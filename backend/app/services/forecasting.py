@@ -20,7 +20,7 @@ from darts.models import TSMixerModel
 from darts.utils.missing_values import fill_missing_values
 
 from ..db.base import PredictionResult
-from ..crud.prediction import create_predictions
+from ..crud.prediction import create_predictions, delete_all_predictions
 from sqlalchemy.orm import Session
 
 # Il percorso è relativo alla directory 'backend' da cui viene lanciato uvicorn
@@ -97,12 +97,15 @@ class ForecastingService:
 
     def run_prediction_pipeline(self, df: pd.DataFrame, target: str, db: Session):
         """
-        Orchestratore unico: esegue la previsione e salva i risultati nel DB.
+        Orchestratore unico: esegue la pulizia (Clean Slate), la previsione e il salvataggio.
         """
-        # 1. Calcoli e trasformazioni
+        # 1. Pulizia preventiva dei vecchi risultati
+        delete_all_predictions(db)
+        
+        # 2. Calcoli e trasformazioni
         prediction_results = self.process_forecasting(df, target)
         
-        # 2. Persistenza tramite CRUD
+        # 3. Persistenza tramite CRUD
         count = create_predictions(db, prediction_results)
         
         return count
