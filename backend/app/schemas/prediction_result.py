@@ -9,10 +9,10 @@ class PredictionResultBase(BaseModel):
     timestamp: datetime
     prediction: float
     actual_value: float
-    diff_percentage: float
+    diff_instances: Optional[float]
     prediction_rounded: int
-    actual_rounded: int
-    diff_rounded_percentage: float
+    actual_rounded: Optional[int]
+    diff_rounded_instances: Optional[float]
 
 class PredictionResultCreate(PredictionResultBase):
     """

@@ -70,6 +70,13 @@ class ForecastingService:
         results = []
         forecast_df = forecast.to_dataframe()
         
+        # Calcoliamo il range globale del dataset per normalizzare l'errore sulla scala del sistema
+        data_max = df_clean[target].max()
+        data_min = df_clean[target].min()
+        data_range = data_max - data_min
+        if data_range <= 0:
+            data_range = 1 # Fallback per evitare divisione per zero
+        
         for ts, pred_val in forecast_df.iterrows():
             real_value_series = df_clean.loc[df_clean['TimeStamp'] == ts, target]   
             if real_value_series.empty:
@@ -78,18 +85,31 @@ class ForecastingService:
             real = real_value_series.values[0]
             pred = pred_val.iloc[0]
               
-            # Logica di arrotondamento e calcolo differenze spostata dal Controller al Servizio
+            # Logica di arrotondamento e calcolo differenze
             pred_round = round(pred)
             real_round = round(real)
+            
+            # --- NUOVA LOGICA DI CALCOLO (DIFFERENZA ISTANZE) ---
+            # 1. Rettifichiamo le predizioni (non possono essere negative)
+            pred_rect = max(0, pred)
+            real_rect = max(0, real)
+            
+            # 2. Calcolo differenza assoluta (istanze in più o in meno)
+            diff_val = pred_rect - real_rect
+            
+            # Calcolo analogo per i valori arrotondati
+            pred_round_rect = max(0, pred_round)
+            real_round_rect = max(0, real_round)
+            diff_round_val = pred_round_rect - real_round_rect
             
             res = PredictionResult(
                 timestamp=ts,
                 prediction=pred,
                 actual_value=real,
-                diff_percentage=((pred - real) / real) * 100 if real != 0 else 0,
+                diff_instances=diff_val,
                 prediction_rounded=pred_round,
                 actual_rounded=real_round,
-                diff_rounded_percentage=((pred_round - real_round) / real_round) * 100 if real_round != 0 else 0
+                diff_rounded_instances=diff_round_val
             )
             results.append(res)
             
