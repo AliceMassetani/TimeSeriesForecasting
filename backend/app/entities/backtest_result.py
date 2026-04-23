@@ -4,12 +4,11 @@ from sqlalchemy import Integer, Float, DateTime
 from sqlalchemy.orm import Mapped, mapped_column
 from ..db.base_class import Base
 
-class PredictionResult(Base):
+class BacktestResult(Base):
     """
-    Rappresenta la tabella 'predictions' nel database MariaDB.
-    Usa lo stile SQLAlchemy 2.0 con Mapped e mapped_column.
+    Rappresenta i risultati di un Backtest (confronto storico).
     """
-    __tablename__ = "predictions"
+    __tablename__ = "backtests"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     timestamp: Mapped[datetime] = mapped_column(DateTime)

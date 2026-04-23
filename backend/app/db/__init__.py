@@ -1,1 +1,1 @@
-# Package per la configurazione del database
+# Identifica la cartella db come un package Python

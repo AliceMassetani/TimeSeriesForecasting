@@ -3,36 +3,34 @@ import pandas as pd
 from darts import TimeSeries
 
 # --- FIX DEFINITIVO PER PYTORCH 2.6+ SECURITY ---
-# Forziamo torch.load a permettere il caricamento del modello locale.
-# Questo risolve i blocchi su "QuantileRegression", "Adam", "MSELoss", ecc. 
-# che Darts usa internamente.
 import torch
 original_load = torch.load
 def patched_load(*args, **kwargs):
-    # Forza la disattivazione del controllo "weights_only" per permettere il caricamento completo
     kwargs['weights_only'] = False
     return original_load(*args, **kwargs)
 torch.load = patched_load
 # -----------------------------------------------
 
-# Gli import pesanti di Darts devono avvenire DOPO il patch di torch.load
 from darts.models import TSMixerModel
 from darts.utils.missing_values import fill_missing_values
 
-from ..db.base import PredictionResult
-from ..crud.prediction import create_predictions, delete_all_predictions
-from sqlalchemy.orm import Session
+from ..entities.backtest_result import BacktestResult
+from ..schemas.backtest_chart import BacktestChart
+from ..repositories.base import IBacktestRepository
+from typing import List, Optional
+from datetime import datetime
 
-# Il percorso è relativo alla directory 'backend' da cui viene lanciato uvicorn
 MODEL_PATH = os.path.join("app", "ml_models", "tsmixer_champion_target.pt")
 
-class ForecastingService:
+class BacktestService:
+    """
+    Service responsabile per le operazioni di Backtesting (simulazione su dati passati).
+    """
     def __init__(self):
         self.model = None
         self.load_model()
 
     def load_model(self):
-        """Carica il modello TSMixer se esiste."""
         if os.path.exists(MODEL_PATH):
             print(f"Caricamento modello da: {MODEL_PATH}")
             try:
@@ -43,20 +41,18 @@ class ForecastingService:
         else:
             print(f"ERRORE: Modello non trovato in {MODEL_PATH}")
 
-    def process_forecasting(self, df: pd.DataFrame, target: str):
+    def run_backtest(self, df: pd.DataFrame, target: str) -> List[BacktestResult]:
         """
-        Esegue la previsione e trasforma i dati in oggetti PredictionResult (DB Ready).
+        Esegue un backtest storico usando una rolling window.
         """
         if self.model is None:
             raise RuntimeError("Il modello non è stato caricato correttamente.")
 
-        # 1. Pre-elaborazione
         df_clean = df.sort_values("TimeStamp").reset_index(drop=True)
         series = fill_missing_values(
             TimeSeries.from_dataframe(df_clean, time_col="TimeStamp", value_cols=target, freq="h")
         )
 
-        # 2. Esecuzione previsione
         forecast = self.model.historical_forecasts(
             series,
             start=self.model.input_chunk_length,
@@ -66,16 +62,8 @@ class ForecastingService:
             last_points_only=True
         )
         
-        # 3. Trasformazione e Calcoli (Business Logic)
         results = []
         forecast_df = forecast.to_dataframe()
-        
-        # Calcoliamo il range globale del dataset per normalizzare l'errore sulla scala del sistema
-        data_max = df_clean[target].max()
-        data_min = df_clean[target].min()
-        data_range = data_max - data_min
-        if data_range <= 0:
-            data_range = 1 # Fallback per evitare divisione per zero
         
         for ts, pred_val in forecast_df.iterrows():
             real_value_series = df_clean.loc[df_clean['TimeStamp'] == ts, target]   
@@ -85,24 +73,19 @@ class ForecastingService:
             real = real_value_series.values[0]
             pred = pred_val.iloc[0]
               
-            # Logica di arrotondamento e calcolo differenze
             pred_round = round(pred)
             real_round = round(real)
             
-            # --- NUOVA LOGICA DI CALCOLO (DIFFERENZA ISTANZE) ---
-            # 1. Rettifichiamo le predizioni (non possono essere negative)
+            # --- LOGICA DI CALCOLO (DIFFERENZA ISTANZE ASSOLUTE) ---
             pred_rect = max(0, pred)
             real_rect = max(0, real)
-            
-            # 2. Calcolo differenza assoluta (istanze in più o in meno)
             diff_val = pred_rect - real_rect
             
-            # Calcolo analogo per i valori arrotondati
             pred_round_rect = max(0, pred_round)
             real_round_rect = max(0, real_round)
             diff_round_val = pred_round_rect - real_round_rect
             
-            res = PredictionResult(
+            res = BacktestResult(
                 timestamp=ts,
                 prediction=pred,
                 actual_value=real,
@@ -115,20 +98,25 @@ class ForecastingService:
             
         return results
 
-    def run_prediction_pipeline(self, df: pd.DataFrame, target: str, db: Session):
+    def run_backtest_pipeline(self, df: pd.DataFrame, target: str, repository: IBacktestRepository) -> int:
         """
-        Orchestratore unico: esegue la pulizia (Clean Slate), la previsione e il salvataggio.
+        Pipeline completa per il backtest.
         """
-        # 1. Pulizia preventiva dei vecchi risultati
-        delete_all_predictions(db)
-        
-        # 2. Calcoli e trasformazioni
-        prediction_results = self.process_forecasting(df, target)
-        
-        # 3. Persistenza tramite CRUD
-        count = create_predictions(db, prediction_results)
-        
+        repository.delete_all()
+        backtest_results = self.run_backtest(df, target)
+        count = repository.create_bulk(backtest_results)
         return count
 
-# Singleton per caricare il modello una sola volta all'avvio
-forecasting_service = ForecastingService()
+    def get_backtest_chart_data(
+        self,
+        repository: IBacktestRepository,
+        limit: Optional[int] = None,
+        start_date: Optional[datetime] = None,
+        end_date: Optional[datetime] = None
+    ) -> BacktestChart:
+        """
+        Recupera i dati del backtest formattati per il grafico.
+        """
+        return repository.get_chart_data(limit, start_date, end_date)
+
+backtest_service = BacktestService()

@@ -1,1 +1,1 @@
-# Package per le entità SQLAlchemy
+# Identifica la cartella entities come un package Python

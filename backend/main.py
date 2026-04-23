@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from app.db.session import engine
 from app.db.base import Base
-from app.api.predictions import router as predictions_router
+from app.api.backtest import router as backtest_router
 
 # Creazione delle tabelle nel database all'avvio
 Base.metadata.create_all(bind=engine)
@@ -9,7 +9,7 @@ Base.metadata.create_all(bind=engine)
 # Inizializzazione dell'app FastAPI
 app = FastAPI(
     title="Predictive Autoscaler ML API",
-    description="API per la previsione della capacità InUse basata su modelli TSMixer",
+    description="API per Backtesting e Forecasting della capacità InUse",
     version="1.0.0"
 )
 
@@ -23,5 +23,4 @@ async def root():
     }
 
 # Inclusione dei router (Controllers) per rendere l'app modulare
-# Nota: puoi aggiungere un prefix se vuoi, es: prefix="/api"
-app.include_router(predictions_router, tags=["Forecasting"])
+app.include_router(backtest_router, prefix="/backtest", tags=["Backtest"])

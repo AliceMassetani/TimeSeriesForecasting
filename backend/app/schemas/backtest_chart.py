@@ -1,10 +1,9 @@
 from pydantic import BaseModel
 from typing import List, Optional
 
-class PredictionChart(BaseModel):
+class BacktestChart(BaseModel):
     """
-    Schema ottimizzato per il frontend (Angular/Chart.js).
-    Ritorna i dati in formato "colonnare" ovvero liste di valori.
+    Schema ottimizzato per il frontend (Grafico di Backtest).
     """
     labels: List[Optional[str]]
     actual: List[Optional[float]]

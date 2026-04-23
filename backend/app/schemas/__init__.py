@@ -1,1 +1,1 @@
-# Package per gli schemi Pydantic
+# Identifica la cartella schemas come un package Python
