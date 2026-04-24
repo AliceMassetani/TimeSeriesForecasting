@@ -13,6 +13,8 @@ numpy                 # Per i calcoli numerici
 scikit-learn          # Per i modelli di machine learning
 statsmodels           # Per l'analisi statistica delle serie temporali
 darts                 # La libreria principale per le serie temporali
+pytorch_lightning     # Richiesto da darts per TSMixerModel e altri modelli PyTorch
+
 matplotlib            # Necessaria se vuoi generare grafici dei modelli
 
 # --- Utility ---

@@ -20,3 +20,19 @@ class IBacktestRepository(ABC):
     @abstractmethod
     def delete_all(self) -> int:
         pass
+
+class IForecastRepository(ABC):
+    """
+    Interfaccia astratta per il Repository del Forecast futuro.
+    """
+    @abstractmethod
+    def get_chart_data(self, limit: Optional[int] = None, start_date: Optional[datetime] = None, end_date: Optional[datetime] = None) -> "ForecastChart":
+        pass
+
+    @abstractmethod
+    def create_bulk(self, results: List[any]) -> int:
+        pass
+
+    @abstractmethod
+    def delete_all(self) -> int:
+        pass

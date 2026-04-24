@@ -2,6 +2,7 @@ from fastapi import FastAPI
 from app.db.session import engine
 from app.db.base import Base
 from app.api.backtest import router as backtest_router
+from app.api.forecast import router as forecast_router
 
 # Creazione delle tabelle nel database all'avvio
 Base.metadata.create_all(bind=engine)
@@ -24,3 +25,4 @@ async def root():
 
 # Inclusione dei router (Controllers) per rendere l'app modulare
 app.include_router(backtest_router, prefix="/backtest", tags=["Backtest"])
+app.include_router(forecast_router, prefix="/forecast", tags=["Forecast"])

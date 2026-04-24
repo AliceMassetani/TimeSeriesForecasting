@@ -31,18 +31,11 @@ class BacktestRepository(IBacktestRepository):
 
     def get_chart_data(self, limit: Optional[int] = None, start_date: Optional[datetime] = None, end_date: Optional[datetime] = None) -> BacktestChart:
         query = self._get_base_query(limit, start_date, end_date)
-        df = pd.read_sql(query.statement, query.session.bind)
-        
-        if df.empty:
-            return BacktestChart(
-                labels=[],
-                actual=[],
-                prediction=[],
-                diff_instances=[],
-                prediction_rounded=[],
-                actual_rounded=[],
-                diff_rounded_instances=[]
-            )
+        # Soluzione ad alte prestazioni che bypassa il bug del container
+        with self.db.get_bind().connect() as conn:
+            result = conn.execute(query.statement)
+            df = pd.DataFrame(result.fetchall(), columns=list(result.keys()))
+
 
         if limit:
             df = df.iloc[::-1].reset_index(drop=True)
