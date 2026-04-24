@@ -9,6 +9,7 @@ from ..db.session import get_db
 from ..services.backtest import backtest_service
 from ..repositories.backtest_repository import BacktestRepository
 from ..schemas.backtest_chart import BacktestChart
+from ..schemas.backtest_metrics import BacktestMetrics
 from ..services.data_processing import data_processing_service
 
 router = APIRouter()
@@ -57,12 +58,13 @@ async def run_backtest_upload(file: UploadFile = File(...), db: Session = Depend
         # 1. Pulizia e Validazione Dati (Riutilizzo lo stesso service del Forecast)
         df = data_processing_service.process_aws_csv(contents, TARGET)
         
-        # 2. Esecuzione Backtest
-        count = backtest_service.run_backtest_pipeline(df, TARGET, repo)
+        # 2. Esecuzione Backtest (con metriche in-memory)
+        res = backtest_service.run_backtest_pipeline(df, TARGET, repo)
         
         return {
             "message": "Backtest completato con successo",
-            "results_saved": count,
+            "results_saved": res["count"],
+            "metrics": res["metrics"],
             "status": "success"
         }
     except HTTPException as he:

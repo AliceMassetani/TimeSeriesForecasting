@@ -14,6 +14,8 @@ torch.load = patched_load
 from darts.models import TSMixerModel
 from darts.utils.missing_values import fill_missing_values
 
+from darts.metrics import rmse, mse, mae, r2_score
+from ..schemas.backtest_metrics import BacktestMetrics
 from ..entities.backtest_result import BacktestResult
 from ..schemas.backtest_chart import BacktestChart
 from ..repositories.base import IBacktestRepository
@@ -41,9 +43,9 @@ class BacktestService:
         else:
             print(f"ERRORE: Modello non trovato in {MODEL_PATH}")
 
-    def run_backtest(self, df: pd.DataFrame, target: str) -> List[BacktestResult]:
+    def run_backtest(self, df: pd.DataFrame, target: str) -> dict:
         """
-        Esegue un backtest storico usando una rolling window.
+        Esegue un backtest storico. Restituisce un dizionario con risultati e metriche.
         """
         if self.model is None:
             raise RuntimeError("Il modello non è stato caricato correttamente.")
@@ -62,6 +64,9 @@ class BacktestService:
             last_points_only=True
         )
         
+        # Calcolo metriche
+        metrics = self._calculate_performance_metrics(series, forecast)
+        
         results = []
         forecast_df = forecast.to_dataframe()
         
@@ -72,7 +77,8 @@ class BacktestService:
             
             real = real_value_series.values[0]
             pred = pred_val.iloc[0]
-              
+            
+            # Arrotondamenti
             pred_round = round(pred)
             real_round = round(real)
             
@@ -96,16 +102,38 @@ class BacktestService:
             )
             results.append(res)
             
-        return results
+        return {
+            "results": results,
+            "metrics": metrics
+        }
 
-    def run_backtest_pipeline(self, df: pd.DataFrame, target: str, repository: IBacktestRepository) -> int:
+    def _calculate_performance_metrics(self, actual_series: TimeSeries, pred_series: TimeSeries) -> BacktestMetrics:
         """
-        Pipeline completa per il backtest.
+        Calcola RMSE, MSE, MAE e R2 in modo efficiente su TimeSeries in memoria.
+        """
+        return BacktestMetrics(
+            rmse=rmse(actual_series, pred_series),
+            mse=mse(actual_series, pred_series),
+            mae=mae(actual_series, pred_series),
+            r2=r2_score(actual_series, pred_series)
+        )
+
+    def run_backtest_pipeline(self, df: pd.DataFrame, target: str, repository: IBacktestRepository) -> dict:
+        """
+        Pipeline: coordina simulazione e salvataggio.
         """
         repository.delete_all()
-        backtest_results = self.run_backtest(df, target)
-        count = repository.create_bulk(backtest_results)
-        return count
+        
+        # 1. Simulazione + Metriche
+        data = self.run_backtest(df, target)
+        
+        # 2. Salvataggio
+        count = repository.create_bulk(data["results"])
+        
+        return {
+            "count": count,
+            "metrics": data["metrics"]
+        }
 
     def get_backtest_chart_data(
         self,
