@@ -7,6 +7,7 @@ from typing import Optional
 
 from ..db.session import get_db
 from ..services.forecast import forecast_service
+from ..services.data_processing import data_processing_service
 from ..repositories.forecast_repository import ForecastRepository
 from ..schemas.forecast_chart import ForecastChart
 
@@ -40,22 +41,18 @@ async def clear_forecasts(db: Session = Depends(get_db)):
 @router.post("/run")
 async def run_forecast_upload(file: UploadFile = File(...), db: Session = Depends(get_db)):
     """
-    Carica un CSV (dati storici recenti) per generare previsioni FUTURE per le prossime 24h.
+    Carica un CSV, lo pulisce tramite DataProcessingService e genera previsioni.
     """
     TARGET = "InUseCapacity"
     repo = ForecastRepository(db)
     
     try:
         contents = await file.read()
-        df = pd.read_csv(io.BytesIO(contents))
         
-        # Verifica colonne minime
-        if "TimeStamp" not in df.columns or TARGET not in df.columns:
-            raise HTTPException(status_code=400, detail=f"Il CSV deve contenere TimeStamp e {TARGET}")
+        # 1. Pulizia e Validazione Dati (SOLID: Delega la responsabilità al service specifico)
+        df = data_processing_service.process_aws_csv(contents, TARGET)
 
-        df['TimeStamp'] = pd.to_datetime(df['TimeStamp'])
-        
-        # Generiamo il forecast (default 2 ore)
+        # 2. Generazione Forecast (default horizon = 2 ore)
         res = forecast_service.run_forecast_pipeline(df, TARGET, repo)
         
         return {
@@ -65,5 +62,7 @@ async def run_forecast_upload(file: UploadFile = File(...), db: Session = Depend
             "details": res
         }
         
+    except HTTPException as he:
+        raise he
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Errore durante la generazione del forecast: {str(e)}")
