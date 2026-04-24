@@ -3,6 +3,7 @@ from app.db.session import engine
 from app.db.base import Base
 from app.api.backtest import router as backtest_router
 from app.api.forecast import router as forecast_router
+from app.api.training import router as training_router
 
 # Creazione delle tabelle nel database all'avvio
 Base.metadata.create_all(bind=engine)
@@ -10,7 +11,7 @@ Base.metadata.create_all(bind=engine)
 # Inizializzazione dell'app FastAPI
 app = FastAPI(
     title="Predictive Autoscaler ML API",
-    description="API per Backtesting e Forecasting della capacità InUse",
+    description="API per Backtesting, Forecasting e Training della capacità InUse",
     version="1.0.0"
 )
 
@@ -26,3 +27,4 @@ async def root():
 # Inclusione dei router (Controllers) per rendere l'app modulare
 app.include_router(backtest_router, prefix="/backtest", tags=["Backtest"])
 app.include_router(forecast_router, prefix="/forecast", tags=["Forecast"])
+app.include_router(training_router, prefix="/train", tags=["Training"])

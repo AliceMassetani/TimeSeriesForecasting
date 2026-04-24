@@ -22,7 +22,8 @@ from ..repositories.base import IBacktestRepository
 from typing import List, Optional
 from datetime import datetime
 
-MODEL_PATH = os.path.join("app", "ml_models", "tsmixer_champion_target.pt")
+CHAMPION_PATH = os.path.join("app", "ml_models", "tsmixer_champion.pt")
+CANDIDATE_PATH = os.path.join("app", "ml_models", "tsmixer_candidate.pt")
 
 class BacktestService:
     """
@@ -30,18 +31,25 @@ class BacktestService:
     """
     def __init__(self):
         self.model = None
+        self.active_model_type = "champion"
         self.load_model()
 
-    def load_model(self):
-        if os.path.exists(MODEL_PATH):
-            print(f"Caricamento modello da: {MODEL_PATH}")
+    def load_model(self, model_type: str = "champion"):
+        """
+        Carica il modello specificato (champion o candidate).
+        """
+        path = CHAMPION_PATH if model_type == "champion" else CANDIDATE_PATH
+        
+        if os.path.exists(path):
+            print(f"Caricamento modello ({model_type}) da: {path}")
             try:
-                self.model = TSMixerModel.load(MODEL_PATH)
-                print("Modello caricato correttamente!")
+                self.model = TSMixerModel.load(path)
+                self.active_model_type = model_type
+                print(f"Modello {model_type} caricato correttamente!")
             except Exception as e:
-                print(f"ERRORE critico nel caricamento modello: {str(e)}")
+                print(f"ERRORE critico nel caricamento modello {model_type}: {str(e)}")
         else:
-            print(f"ERRORE: Modello non trovato in {MODEL_PATH}")
+            print(f"ERRORE: Modello {model_type} non trovato in {path}")
 
     def run_backtest(self, df: pd.DataFrame, target: str) -> dict:
         """
@@ -60,18 +68,23 @@ class BacktestService:
             start=self.model.input_chunk_length,
             forecast_horizon=2,
             stride=1,
+            num_samples=200,
             retrain=False,
             last_points_only=True
         )
         
-        # Calcolo metriche
-        metrics = self._calculate_performance_metrics(series, forecast)
+        # --- ESTRAZIONE P50 PER METRICHE E VISUALIZZAZIONE ---
+        # Poiché forecast è probabilistico, prendiamo la mediana (quantile 0.5)
+        forecast_p50 = forecast.quantile(0.5)
+
+        # --- CALCOLO METRICHE ---
+        metrics = self._calculate_performance_metrics(series, forecast_p50)
         
         results = []
-        forecast_df = forecast.to_dataframe()
+        forecast_df = forecast_p50.to_dataframe()
         
         for ts, pred_val in forecast_df.iterrows():
-            real_value_series = df_clean.loc[df_clean['TimeStamp'] == ts, target]   
+            real_value_series = df_clean.loc[df_clean['TimeStamp'] == ts, target]
             if real_value_series.empty:
                 continue
             
@@ -82,7 +95,7 @@ class BacktestService:
             pred_round = round(pred)
             real_round = round(real)
             
-            # --- LOGICA DI CALCOLO (DIFFERENZA ISTANZE ASSOLUTE) ---
+            # --- LOGICA DI CALCOLO (DIFFERENZA ISTANZE ASSOLUTE >= 0) ---
             pred_rect = max(0, pred)
             real_rect = max(0, real)
             diff_val = pred_rect - real_rect

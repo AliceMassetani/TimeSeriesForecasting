@@ -19,7 +19,8 @@ from ..schemas.forecast_chart import ForecastChart
 from typing import List, Optional
 from datetime import datetime
 
-MODEL_PATH = os.path.join("app", "ml_models", "tsmixer_champion_target.pt")
+CHAMPION_PATH = os.path.join("app", "ml_models", "tsmixer_champion.pt")
+CANDIDATE_PATH = os.path.join("app", "ml_models", "tsmixer_candidate.pt")
 
 class ForecastService:
     """
@@ -27,18 +28,25 @@ class ForecastService:
     """
     def __init__(self):
         self.model = None
+        self.active_model_type = "champion"
         self.load_model()
 
-    def load_model(self):
-        if os.path.exists(MODEL_PATH):
-            print(f"Caricamento modello da: {MODEL_PATH}")
+    def load_model(self, model_type: str = "champion"):
+        """
+        Carica il modello specificato (champion o candidate).
+        """
+        path = CHAMPION_PATH if model_type == "champion" else CANDIDATE_PATH
+        
+        if os.path.exists(path):
+            print(f"Caricamento modello ({model_type}) da: {path}")
             try:
-                self.model = TSMixerModel.load(MODEL_PATH)
-                print("Modello caricato correttamente!")
+                self.model = TSMixerModel.load(path)
+                self.active_model_type = model_type
+                print(f"Modello {model_type} caricato correttamente!")
             except Exception as e:
-                print(f"ERRORE critico nel caricamento modello: {str(e)}")
+                print(f"ERRORE critico nel caricamento modello {model_type}: {str(e)}")
         else:
-            print(f"ERRORE: Modello non trovato in {MODEL_PATH}")
+            print(f"ERRORE: Modello {model_type} non trovato in {path}")
 
     def run_forecast(self, df: pd.DataFrame, target: str, n: int = 2) -> dict:
         """
