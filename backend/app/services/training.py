@@ -24,7 +24,7 @@ class TrainingService:
     """
     
     def __init__(self):
-        # Parametri standard dal file TSMixer_hourly.py
+        # Parametri standard
         self.input_chunk_len = 168
         self.output_chunk_len = 8
         self.n_epochs = 50
@@ -81,7 +81,7 @@ class TrainingService:
                 random_state=42,
             )
 
-            # 4. Addestramento (Senza covariate per ora)
+            # 4. Addestramento
             print(f"Inizio addestramento TSMixer su {len(series)} record...")
             model.fit(series=series, verbose=False)
 
@@ -93,8 +93,7 @@ class TrainingService:
             return {
                 "status": "success",
                 "message": "Modello candidato addestrato con successo. Ora puoi caricarlo per testarlo o promuoverlo.",
-                "records_trained": len(series),
-                "candidate_path": CANDIDATE_PATH
+                "records_trained": len(series)
             }
 
         except HTTPException as he:
@@ -105,19 +104,46 @@ class TrainingService:
 
     def promote_candidate(self) -> dict:
         """
-        Promuove il modello candidato a Champion (Produzione).
+        Promuove il modello candidato a Champion (Produzione) con backup.
         """
         if not os.path.exists(CANDIDATE_PATH):
             raise HTTPException(status_code=404, detail="Nessun modello candidato trovato da promuovere.")
         
         try:
             import shutil
+            # 1. Crea un backup del champion attuale se esiste
+            if os.path.exists(CHAMPION_PATH):
+                BACKUP_PATH = CHAMPION_PATH + ".bak"
+                shutil.copy(CHAMPION_PATH, BACKUP_PATH)
+                print(f"Backup creato: {BACKUP_PATH}")
+
+            # 2. Copia candidato -> champion
             shutil.copy(CANDIDATE_PATH, CHAMPION_PATH)
             return {
                 "status": "success",
-                "message": "Modello candidato promosso a Champion con successo!"
+                "message": "Modello candidato promosso a Champion. Il vecchio champion è stato salvato come backup."
             }
         except Exception as e:
-            raise HTTPException(status_code=500, detail=f"Errore durante la promozione del modello: {str(e)}")
+            raise HTTPException(status_code=500, detail=f"Errore durante la promozione: {str(e)}")
+
+    def rollback_champion(self) -> dict:
+        """
+        Ripristina l'ultimo modello Champion dal backup.
+        """
+        BACKUP_PATH = CHAMPION_PATH + ".bak"
+        if not os.path.exists(BACKUP_PATH):
+            raise HTTPException(status_code=404, detail="Nessun backup trovato per il rollback.")
+        
+        try:
+            import shutil
+            # Ripristina backup -> champion
+            # Il champion attuale viene sovrascritto, ma è salvato in tsmixer_candidate
+            shutil.copy(BACKUP_PATH, CHAMPION_PATH)
+            return {
+                "status": "success",
+                "message": "Rollback completato. Il modello di produzione è stato ripristinato dal backup."
+            }
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Errore durante il rollback: {str(e)}")
 
 training_service = TrainingService()

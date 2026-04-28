@@ -38,7 +38,9 @@ class ForecastRepository(IForecastRepository):
         return ForecastChart(
             labels=df['timestamp'].apply(lambda x: x.strftime('%Y-%m-%d %H:%M')).tolist(),
             prediction=df['prediction'].tolist(),
+            prediction_p70=df['prediction_p70'].tolist(),
             prediction_rounded=df['prediction_rounded'].tolist(),
+            prediction_p70_rounded=df['prediction_p70_rounded'].tolist(),
             actual=df['actual_value'].tolist()
         )
 

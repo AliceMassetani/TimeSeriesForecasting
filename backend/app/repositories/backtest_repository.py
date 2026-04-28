@@ -44,8 +44,10 @@ class BacktestRepository(IBacktestRepository):
             labels=df['timestamp'].dt.strftime('%Y-%m-%d %H:%M').tolist(),
             actual=df['actual_value'].tolist(),
             prediction=df['prediction'].tolist(),
+            prediction_p70=df['prediction_p70'].tolist(),
             diff_instances=df['diff_instances'].tolist(),
             prediction_rounded=df['prediction_rounded'].tolist(),
+            prediction_p70_rounded=df['prediction_p70_rounded'].tolist(),
             actual_rounded=df['actual_rounded'].tolist(),
             diff_rounded_instances=df['diff_rounded_instances'].tolist()
         )

@@ -60,3 +60,16 @@ async def promote_model():
     backtest_service.load_model(model_type="champion")
     
     return result
+
+@router.post("/rollback")
+async def rollback_model():
+    """
+    Ripristina il Champion precedente dal backup e lo ricarica.
+    """
+    result = training_service.rollback_champion()
+    
+    # Ricarica il modello ripristinato nei service
+    forecast_service.load_model(model_type="champion")
+    backtest_service.load_model(model_type="champion")
+    
+    return result

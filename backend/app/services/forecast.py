@@ -78,15 +78,20 @@ class ForecastService:
         )
 
         # Prevediamo le prossime n ore
-        prediction_series = self.model.predict(n=n, series=series)
-        forecast_df = prediction_series.to_dataframe()
+        prediction_series = self.model.predict(n=n, series=series, num_samples=200)
+        forecast_p50_df = prediction_series.quantile(0.5).to_dataframe()
+        forecast_p70_df = prediction_series.quantile(0.7).to_dataframe()
         
-        for ts, pred_val in forecast_df.iterrows():
-            pred = pred_val.iloc[0]
+        for ts, pred_row in forecast_p50_df.iterrows():
+            pred_p50 = pred_row.iloc[0]
+            pred_p70 = forecast_p70_df.loc[ts].iloc[0]
+            
             results.append(ForecastResult(
                 timestamp=ts,
-                prediction=pred,
-                prediction_rounded=int(round(pred)),
+                prediction=pred_p50,
+                prediction_p70=pred_p70,
+                prediction_rounded=int(round(pred_p50)),
+                prediction_p70_rounded=int(round(pred_p70)),
                 actual_value=None
             ))
         p_count = len(results) - h_count

@@ -73,43 +73,49 @@ class BacktestService:
             last_points_only=True
         )
         
-        # --- ESTRAZIONE P50 PER METRICHE E VISUALIZZAZIONE ---
-        # Poiché forecast è probabilistico, prendiamo la mediana (quantile 0.5)
+        # --- ESTRAZIONE QUANTILI PER VISUALIZZAZIONE ---
+        # Poiché forecast è probabilistico, prendiamo la mediana (P50) e il P70
         forecast_p50 = forecast.quantile(0.5)
+        forecast_p70 = forecast.quantile(0.7)
 
-        # --- CALCOLO METRICHE ---
+        # --- CALCOLO METRICHE (Sempre sulla mediana) ---
         metrics = self._calculate_performance_metrics(series, forecast_p50)
         
         results = []
-        forecast_df = forecast_p50.to_dataframe()
+        df_p50 = forecast_p50.to_dataframe()
+        df_p70 = forecast_p70.to_dataframe()
         
-        for ts, pred_val in forecast_df.iterrows():
+        for ts, row_p50 in df_p50.iterrows():
             real_value_series = df_clean.loc[df_clean['TimeStamp'] == ts, target]
             if real_value_series.empty:
                 continue
             
             real = real_value_series.values[0]
-            pred = pred_val.iloc[0]
+            pred_p50 = row_p50.iloc[0]
+            pred_p70 = df_p70.loc[ts].iloc[0] # Estraiamo il P70 corrispondente
             
             # Arrotondamenti
-            pred_round = round(pred)
+            p50_round = round(pred_p50)
+            p70_round = round(pred_p70)
             real_round = round(real)
             
             # --- LOGICA DI CALCOLO (DIFFERENZA ISTANZE ASSOLUTE >= 0) ---
-            pred_rect = max(0, pred)
+            pred_rect = max(0, pred_p50)
             real_rect = max(0, real)
             diff_val = pred_rect - real_rect
             
-            pred_round_rect = max(0, pred_round)
+            p50_round_rect = max(0, p50_round)
             real_round_rect = max(0, real_round)
-            diff_round_val = pred_round_rect - real_round_rect
+            diff_round_val = p50_round_rect - real_round_rect
             
             res = BacktestResult(
                 timestamp=ts,
-                prediction=pred,
+                prediction=pred_p50,
+                prediction_p70=pred_p70,
                 actual_value=real,
                 diff_instances=diff_val,
-                prediction_rounded=pred_round,
+                prediction_rounded=p50_round,
+                prediction_p70_rounded=p70_round,
                 actual_rounded=real_round,
                 diff_rounded_instances=diff_round_val
             )
