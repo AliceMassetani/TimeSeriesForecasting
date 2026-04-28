@@ -1,4 +1,5 @@
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from app.db.session import engine
 from app.db.base import Base
 from app.api.backtest import router as backtest_router
@@ -15,6 +16,15 @@ app = FastAPI(
     version="1.0.0"
 )
 
+# Configurazione CORS - ESSENZIALE per far funzionare il frontend
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"], 
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 # Endpoint di benvenuto
 @app.get("/")
 async def root():
@@ -24,7 +34,7 @@ async def root():
         "docs": "/docs"
     }
 
-# Inclusione dei router (Controllers) per rendere l'app modulare
+# Inclusione dei router
 app.include_router(backtest_router, prefix="/backtest", tags=["Backtest"])
 app.include_router(forecast_router, prefix="/forecast", tags=["Forecast"])
 app.include_router(training_router, prefix="/train", tags=["Training"])

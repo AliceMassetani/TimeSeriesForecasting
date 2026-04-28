@@ -1,0 +1,50 @@
+<div class="dashboard-container">
+  <!-- Sidebar -->
+  <aside class="sidebar">
+    <div class="sidebar-header">
+      <h2>APRA Scaler</h2>
+    </div>
+    
+    <nav class="sidebar-nav">
+      <a routerLink="/forecast" routerLinkActive="active" class="nav-item">
+        <span class="nav-icon">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/></svg>
+        </span>
+        Live Forecast
+      </a>
+      <a routerLink="/backtest" routerLinkActive="active" class="nav-item">
+        <span class="nav-icon">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l4 2"/></svg>
+        </span>
+        Backtest
+      </a>
+      <a routerLink="/training" routerLinkActive="active" class="nav-item">
+        <span class="nav-icon">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="4" y="4" width="16" height="16" rx="2"/>
+          <path d="M9 22v-2"/><path d="M15 22v-2"/><path d="M9 4V2"/><path d="M15 4V2"/>
+          <path d="M22 9h-2"/><path d="M22 15h-2"/><path d="M4 9H2"/><path d="M4 15H2"/>
+          <path d="M9 9h6v6H9z"/>
+          </svg>
+        </span>
+        Training
+      </a>
+    </nav>
+    
+    <div class="sidebar-footer">
+      <div class="status-indicator"></div>
+      System Active
+    </div>
+  </aside>
+
+  <!-- Main Content -->
+  <main class="main-content">
+    <header class="top-bar">
+      <h1>Resource Capacity Planning</h1>
+    </header>
+    
+    <section class="content-area">
+      <router-outlet></router-outlet>
+    </section>
+  </main>
+</div>

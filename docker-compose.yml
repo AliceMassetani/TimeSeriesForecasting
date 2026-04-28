@@ -71,18 +71,21 @@ services:
   # Frontend Angular
   # Accessibile direttamente su http://localhost:4200
   # --------------------------------------------------------------------------
-  #frontend:
-  #  build:
-  #    context: ./frontend
-  #    dockerfile: Dockerfile
-  #  container_name: TimeSeriesForcasting_frontend
-  #  restart: unless-stopped
-  #  ports:
-  #    - "4200:4200"
-  #  volumes:
-  #    - ./frontend:/app
-  #  networks:
-  #    - TimeSeriesForcasting_network
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: TimeSeriesForcasting_frontend
+    restart: unless-stopped
+    ports:
+      - "4200:4200"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    networks:
+      - TimeSeriesForcasting_network
+    depends_on:
+      - backend
 
   # --------------------------------------------------------------------------
   # phpMyAdmin - Interfaccia grafica per il database
