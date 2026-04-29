@@ -23,11 +23,30 @@ import { Chart } from 'chart.js/auto';
           Carica Grafico\
         </button>
       </div>
-
+      
       <div class="chart-container">
         <div class="chart-wrapper" [hidden]="!hasData">
           <canvas #backtestChart></canvas>
         </div>
+      </div>
+      
+      <div class="metrics-grid" *ngIf="metrics">
+        <div class="metrics-card">
+          <span class="label">MSE</span>
+          <span class="value">{{ metrics.mse | number: '1.3-3' }}</span>
+        </div>        
+        <div class="metrics-card">
+          <span class="label">RMSE</span>
+          <span class="value">{{ metrics.rmse | number: '1.3-3' }}</span>
+        </div> 
+        <div class="metrics-card"> 
+          <span class="label">MAE</span>
+          <span class="value">{{ metrics.mae | number: '1.3-3' }}</span>
+        </div>
+        <div class="metrics-card">
+          <span class="label">R²</span>
+          <span class="value">{{ metrics.r2 | number: '1.3-3' }}</span>
+        </div>        
       </div>
 
     </div>
@@ -56,15 +75,71 @@ import { Chart } from 'chart.js/auto';
       width: 100%;
       overflow-x: auto;  /* Permette lo scroll orizzontale */
     }
-
     .chart-wrapper {
-      width: 10000px;
+      width: 7000px;
       height: 600px;
     }
+        .metrics-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr); /* 4 colonne pulite */
+      gap: 1.5rem;
+      margin-top: 2rem;
+      padding: 0; /* Togliamo il padding del container */
+    }
+
+    .metrics-card {
+      background: rgba(30, 41, 59, 0.5); /* Effetto vetro scuro */
+      backdrop-filter: blur(10px);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 12px;
+      padding: 1.25rem;
+      display: flex;
+      flex-direction: column; /* Label sopra, valore sotto per più eleganza */
+      align-items: flex-start;
+      transition: all 0.3s ease;
+      position: relative;
+      overflow: hidden;
+    }
+
+    /* Una piccola linea luminosa in cima alla card */
+    .metrics-card::before {
+      content: "";
+      position: absolute;
+      top: 0; left: 0; width: 100%; height: 3px;
+      background: linear-gradient(90deg, #3b82f6, #8b5cf6);
+    }
+
+    .metrics-card:hover {
+      transform: translateY(-5px);
+      background: rgba(30, 41, 59, 0.8);
+      border-color: rgba(59, 130, 246, 0.5);
+      box-shadow: 0 10px 20px rgba(0, 0, 0, 0.3);
+    }
+
+    .metrics-card .label {
+      color: #64748b; /* Grigio bluastro discreto */
+      font-size: 0.75rem;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      font-weight: 700;
+      margin-bottom: 0.5rem;
+    }
+
+    .metrics-card .value {
+      color: #f8fafc;
+      font-size: 1.75rem;
+      font-weight: 800;
+      font-family: 'Inter', sans-serif; /* Se hai un font moderno */
+      background: linear-gradient(to right, #fff, #94a3b8);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
   `]
 })
 export class BacktestComponent {
   selectedFile: File | null = null;
+  metrics: any  = null;
 
   @ViewChild('backtestChart') 
   backtestChart!: ElementRef;
@@ -90,8 +165,9 @@ export class BacktestComponent {
     this.apiService.runBacktest(this.selectedFile)
       .subscribe({
         next: (response: any) => {
+          this.metrics = response.metrics; 
+          this.loadBacktestChart();
           console.log('Backtest completato con successo:', response);
-          this.loadBacktestChart()
         },
         error: (error: any) => {
           console.error('Errore durante il backtest:', error);
@@ -102,7 +178,8 @@ export class BacktestComponent {
   loadBacktestChart() {
     this.apiService.getBacktestHistory().subscribe({
       next: (data: any) => {
-        this.createChart(data);
+        this.metrics = data.metrics;
+        this.createChart(data);  
         console.log('Dati backtest caricati con successo:', data);
       },
       error: (error: any) => {
@@ -191,4 +268,4 @@ export class BacktestComponent {
 
     });
   }
-}
+} 

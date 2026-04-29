@@ -2,3 +2,4 @@
 from .base_class import Base
 from ..entities.backtest_result import BacktestResult
 from ..entities.forecast_result import ForecastResult
+from ..entities.metrics import Metrics

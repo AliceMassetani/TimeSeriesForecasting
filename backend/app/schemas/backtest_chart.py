@@ -1,5 +1,6 @@
 from pydantic import BaseModel
 from typing import List, Optional
+from .backtest_metrics import BacktestMetrics
 
 class BacktestChart(BaseModel):
     """
@@ -14,3 +15,4 @@ class BacktestChart(BaseModel):
     prediction_p70_rounded: List[Optional[int]]
     actual_rounded: List[Optional[int]]
     diff_rounded_instances: List[Optional[float]]
+    metrics: Optional[BacktestMetrics] = None
