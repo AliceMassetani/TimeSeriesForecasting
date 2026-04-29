@@ -26,6 +26,13 @@ export class ApiService {
     return this.http.get<BacktestChart>(`${this.apiUrl}/backtest/history`);
   }
 
+
+  runBacktest(file: File): Observable<any> {
+    const formData = new FormData();
+    formData.append('file', file);
+    return this.http.post(`${this.apiUrl}/backtest/run`, formData);
+  }
+
   /**
    * Avvia l'addestramento caricando un file CSV
    */
