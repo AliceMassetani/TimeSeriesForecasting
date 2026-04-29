@@ -14,24 +14,6 @@ from ..services.data_processing import data_processing_service
 
 router = APIRouter()
 
-@router.get("/history", response_model=BacktestChart)
-async def get_backtest_history(
-    limit: Optional[int] = None,
-    start_date: Optional[datetime] = None,
-    end_date: Optional[datetime] = None,
-    db: Session = Depends(get_db)
-):
-    """
-    Recupera lo storico dei backtest eseguiti.
-    """
-    repo = BacktestRepository(db)
-    chart_data = backtest_service.get_backtest_chart_data(repo, limit, start_date, end_date)
-    
-    if not chart_data.labels:
-        raise HTTPException(status_code=404, detail="Nessun dato trovato")
-
-    return chart_data
-
 @router.delete("/")
 async def clear_backtests(db: Session = Depends(get_db)):
     """
@@ -71,3 +53,28 @@ async def run_backtest_upload(file: UploadFile = File(...), db: Session = Depend
         raise he
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Errore durante il backtest: {str(e)}")
+
+
+@router.get("/history", response_model=BacktestChart)
+async def get_backtest_history(
+    limit: Optional[int] = None,
+    start_date: Optional[datetime] = None,
+    end_date: Optional[datetime] = None,
+    db: Session = Depends(get_db)
+):
+    """
+    Recupera lo storico dei backtest eseguiti.
+    """
+    # Validazione Parametri
+    if limit is not None and limit <= 0:
+        raise HTTPException(status_code=400, detail="Limit deve essere maggiore di 0")
+    if start_date and end_date and start_date > end_date:
+        raise HTTPException(status_code=400, detail="La data di inizio deve essere precedente a quella di fine")
+
+    repo = BacktestRepository(db)
+    chart_data = backtest_service.get_backtest_chart_data(repo, limit, start_date, end_date)
+    
+    if not chart_data.labels:
+        raise HTTPException(status_code=404, detail="Nessun dato trovato")
+
+    return chart_data

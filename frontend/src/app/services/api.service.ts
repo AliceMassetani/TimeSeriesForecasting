@@ -1,5 +1,5 @@
 import { Injectable } from '@angular/core';
-import { HttpClient } from '@angular/common/http';
+import { HttpClient, HttpParams } from '@angular/common/http';
 import { Observable } from 'rxjs';
 import { ForecastChart, BacktestChart, TrainingResult } from '../models/api-data.model';
 
@@ -22,8 +22,12 @@ export class ApiService {
   /**
    * Recupera lo storico dei Backtest formattato per il grafico
    */
-  getBacktestHistory(): Observable<BacktestChart> {
-    return this.http.get<BacktestChart>(`${this.apiUrl}/backtest/history`);
+  getBacktestHistory(limit?: number, startDate?: string, endDate?: string): Observable<BacktestChart> {
+    let params = new HttpParams();
+    if (limit) params = params.set('limit', limit.toString());
+    if (startDate) params = params.set('start_date', startDate);
+    if (endDate) params = params.set('end_date', endDate);
+    return this.http.get<BacktestChart>(`${this.apiUrl}/backtest/history`, {params});
   }
 
 

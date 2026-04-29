@@ -1,12 +1,13 @@
-import { Component, ViewChild, ElementRef, OnInit} from '@angular/core';
+import { Component, ViewChild, ElementRef, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { FormsModule } from '@angular/forms';
 import { ApiService } from '../../services/api.service';
 import { Chart } from 'chart.js/auto';
 
 @Component({
   selector: 'app-backtest',
   standalone: true,
-  imports: [CommonModule],
+  imports: [CommonModule, FormsModule],
   template: `
     <div class="backtest-container">
       <h2>Analisi Storica (Backtest)</h2>
@@ -19,12 +20,17 @@ import { Chart } from 'chart.js/auto';
             Avvia Backtest
           </button>
         </label>
-        <button (click)="loadBacktestChart()">
-          Carica Grafico\
-        </button>
+        <div class="filters-row">
+          <input type="number" [(ngModel)]="limit" placeholder="Limit">
+          <input type="date" [(ngModel)]="startDate" placeholder="Start Date">
+          <input type="date" [(ngModel)]="endDate" placeholder="End Date">
+          <button (click)="loadBacktestChart()">
+            Carica Grafico
+          </button>
+        </div>      
       </div>
       
-      <div class="chart-container">
+      <div class="chart-container" [hidden]="!hasData">
         <div class="chart-wrapper" [hidden]="!hasData">
           <canvas #backtestChart></canvas>
         </div>
@@ -135,17 +141,40 @@ import { Chart } from 'chart.js/auto';
       -webkit-text-fill-color: transparent;
     }
 
+    .filters-row {
+      margin-top: 1rem; 
+      padding-top: 1rem; 
+      border-top: 1px solid rgba(255,255,255,0.1); 
+      display: flex; 
+      gap: 1rem; 
+      align-items: center;
+      flex-wrap: wrap;
+    }
+    .filters-row input {
+      background: rgba(30, 41, 59, 0.5); /* Stessa estetica del resto */
+      border: 1px solid #334155; 
+      color: #fff; 
+      padding: 0.5rem; 
+      border-radius: 4px; 
+      min-width: 150px;
+      flex: 1;
+      max-width: 200px;
+    }
+
   `]
 })
 export class BacktestComponent {
   selectedFile: File | null = null;
-  metrics: any  = null;
+  metrics: any = null;
+  limit?: number;
+  startDate?: string;
+  endDate?: string;
 
-  @ViewChild('backtestChart') 
+  @ViewChild('backtestChart')
   backtestChart!: ElementRef;
   chart: any;
   hasData: boolean = false;
-  constructor(private apiService: ApiService) {}
+  constructor(private apiService: ApiService) { }
 
   ngOnInit() {
     this.loadBacktestChart();
@@ -165,7 +194,7 @@ export class BacktestComponent {
     this.apiService.runBacktest(this.selectedFile)
       .subscribe({
         next: (response: any) => {
-          this.metrics = response.metrics; 
+          this.metrics = response.metrics;
           this.loadBacktestChart();
           console.log('Backtest completato con successo:', response);
         },
@@ -176,10 +205,10 @@ export class BacktestComponent {
   }
 
   loadBacktestChart() {
-    this.apiService.getBacktestHistory().subscribe({
+    this.apiService.getBacktestHistory(this.limit, this.startDate, this.endDate).subscribe({
       next: (data: any) => {
         this.metrics = data.metrics;
-        this.createChart(data);  
+        this.createChart(data);
         console.log('Dati backtest caricati con successo:', data);
       },
       error: (error: any) => {
@@ -191,8 +220,8 @@ export class BacktestComponent {
   private createChart(data: any) {
     this.hasData = true;
     const context = this.backtestChart.nativeElement.getContext('2d');
-        
-    if(this.chart) this.chart.destroy(); // distrugge il vecchio grafico prima di farne uno nuovo
+
+    if (this.chart) this.chart.destroy(); // distrugge il vecchio grafico prima di farne uno nuovo
 
     this.chart = new Chart(context, {
       type: 'line',
@@ -243,28 +272,29 @@ export class BacktestComponent {
         responsive: true,
         maintainAspectRatio: false,
         plugins: {
-            legend: { display: true, labels: { color: '#ffffff' } },
-            title: { display: true, text: 'Actual vs Prediction', color: '#ffffff' }
+          legend: { display: true, labels: { color: '#ffffff' } },
+          title: { display: true, text: 'Actual vs Prediction', color: '#ffffff' }
         },
         scales: {
-            x: { 
-                display: true,
-                title: { display: true, text: 'Time', color: '#ffffff' },
-                ticks: { color: '#cccccc', maxRotation: 45, minRotation: 45 },
-                grid: { color: 'rgba(255, 255, 255, 0.1)'
-                }
-            },
-            y: { 
-                display: true,
-                title: { display: true, text: 'Value', color: '#ffffff'},
-                ticks: { color: '#cccccc' },
-                grid: { color: 'rgba(255, 255, 255, 0.1)' }
+          x: {
+            display: true,
+            title: { display: true, text: 'Time', color: '#ffffff' },
+            ticks: { color: '#cccccc', maxRotation: 45, minRotation: 45 },
+            grid: {
+              color: 'rgba(255, 255, 255, 0.1)'
             }
+          },
+          y: {
+            display: true,
+            title: { display: true, text: 'Value', color: '#ffffff' },
+            ticks: { color: '#cccccc' },
+            grid: { color: 'rgba(255, 255, 255, 0.1)' }
+          }
         },
         elements: {
-            line: {tension: 0.4 } // Questo riporta le "curve" morbide del tuo grafico originale
+          line: { tension: 0.4 } // Questo riporta le "curve" morbide del tuo grafico originale
         }
-    }
+      }
 
     });
   }

@@ -27,7 +27,18 @@ class BacktestRepository(IBacktestRepository):
             df = pd.DataFrame(result.fetchall(), columns=list(result.keys()))
 
         if df.empty:
-            return BacktestChart(labels=[], actual=[], prediction=[], prediction_p70=[], diff_instances=[], prediction_rounded=[], prediction_p70_rounded=[], actual_rounded=[], diff_rounded_instances=[], metrics=None)
+            return BacktestChart(
+                labels=[],
+                actual=[],
+                prediction=[],
+                prediction_p70=[],
+                diff_instances=[],
+                prediction_rounded=[],
+                prediction_p70_rounded=[],
+                actual_rounded=[],
+                diff_rounded_instances=[],
+                metrics=None
+            )
 
         if limit: df = df.iloc[::-1].reset_index(drop=True)
 
