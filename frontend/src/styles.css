@@ -1,17 +1,83 @@
-/* 
-  Stili Globali - Forza il font Inter su tutta l'applicazione 
-*/
+/* Design System Globale - Nomi Puliti */
 
-html, body {
+:root {
+  --bg-main: #0f172a;
+  --bg-card: #1a1d24;
+  --bg-glass: rgba(30, 41, 59, 0.5);
+  --text-main: #f8fafc;
+  --text-sub: #94a3b8;
+  --accent-blue: #3b82f6;
+  --border-glass: rgba(255, 255, 255, 0.1);
+}
+
+body {
   margin: 0;
-  padding: 0;
-  height: 100%;
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif !important;
-  background-color: #0f1116;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+  font-family: sans-serif;
+  background-color: var(--bg-main);
+  color: var(--text-main);
 }
 
-* {
-  box-sizing: border-box;
+/* Grafici */
+.chart-container {
+  margin-top: 2rem;
+  background: var(--bg-card);
+  padding: 1.5rem;
+  border-radius: 8px;
+  height: 650px; 
+  width: 100%;
+  overflow-x: auto;
+  border: 1px solid #334155;
 }
+
+.chart-wrapper {
+  width: 6000px;
+  height: 600px;
+}
+
+/* Metriche */
+.metrics-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 1.5rem;
+  margin-top: 2rem;
+}
+
+.metrics-card {
+  background: var(--bg-glass);
+  backdrop-filter: blur(10px);
+  border: 1px solid var(--border-glass);
+  border-radius: 12px;
+  padding: 1.25rem;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  position: relative;
+  overflow: hidden;
+  transition: all 0.3s ease;
+}
+
+.metrics-card::before {
+  content: ""; 
+  position: absolute; top: 0; left: 0; width: 100%; height: 3px;
+  background: linear-gradient(90deg, #3b82f6, #8b5cf6);
+}
+
+.metrics-card .label { color: var(--text-sub); font-size: 0.75rem; text-transform: uppercase; font-weight: 700; margin-bottom: 0.5rem; }
+.metrics-card .value { color: var(--text-main); font-size: 1.75rem; font-weight: 800; }
+
+/* Legenda */
+.legend-custom {
+  display: flex;
+  gap: 2rem;
+  margin-top: 1.5rem;
+  justify-content: center;
+  font-size: 0.85rem;
+  color: var(--text-sub);
+}
+
+.legend-item { display: flex; align-items: center; gap: 0.5rem; }
+.dot { width: 12px; height: 12px; border-radius: 3px; }
+
+/* Testi */
+.page-header { margin-bottom: 2rem; }
+.subtitle { color: var(--text-sub); margin-bottom: 1rem; font-size: 0.95rem; }

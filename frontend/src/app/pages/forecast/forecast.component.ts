@@ -2,9 +2,7 @@ import { Component, OnInit, ViewChild, ElementRef, AfterViewInit } from '@angula
 import { CommonModule } from '@angular/common';
 import { ApiService } from '../../services/api.service';
 import { ForecastChart } from '../../models/api-data.model';
-import { Chart, registerables } from 'chart.js';
-
-Chart.register(...registerables);
+import { Chart } from 'chart.js/auto';
 
 @Component({
   selector: 'app-forecast',
@@ -12,56 +10,36 @@ Chart.register(...registerables);
   imports: [CommonModule],
   template: `
     <div class="forecast-container">
-      <div class="card-header">
-        <h2>Live Forecast</h2>
-        <p class="subtitle">Previsioni della capacità In-Use per le prossime ore</p>
-      </div>
-
-      <div class="chart-wrapper">
-        <canvas #forecastChart></canvas>
+      <div class="page-header">
+        <h2>Previsione Live (Forecast)</h2>
+        <p class="subtitle">Capacità In-Use prevista per le prossime ore rispetto ai dati reali recenti.</p>
       </div>
 
       <div class="legend-custom">
-        <div class="legend-item"><span class="dot p50"></span> Previsione Media (P50)</div>
-        <div class="legend-item"><span class="dot p70"></span> Previsione Cautelativa (P70)</div>
         <div class="legend-item"><span class="dot actual"></span> Dati Reali</div>
+        <div class="legend-item"><span class="dot p50"></span> Previsione (P50)</div>
+        <div class="legend-item"><span class="dot p70"></span> Previsione Cautelativa (P70)</div>
+      </div>
+
+      <div class="chart-container">
+        <div class="chart-wrapper">
+          <canvas #forecastChart></canvas>
+        </div>
       </div>
     </div>
   `,
   styles: [`
-    .forecast-container {
-      background: #1a1d24;
-      border-radius: 12px;
-      padding: 2rem;
-      box-shadow: 0 4px 20px rgba(0,0,0,0.3);
-    }
-    .card-header { margin-bottom: 2rem; }
-    .subtitle { color: #94a3b8; font-size: 0.9rem; }
-    .chart-wrapper {
-      position: relative;
-      height: 400px;
-      width: 100%;
-    }
-    .legend-custom {
-      display: flex;
-      gap: 2rem;
-      margin-top: 1.5rem;
-      justify-content: center;
-      font-size: 0.85rem;
-      color: #94a3b8;
-    }
-    .legend-item { display: flex; align-items: center; gap: 0.5rem; }
-    .dot { width: 10px; height: 10px; border-radius: 2px; }
-    .dot.p50 { background: #3b82f6; }
-    .dot.p70 { background: #60a5fa; border: 1px dashed #fff; }
-    .dot.actual { background: #ffffff; }
+    .forecast-container { padding: 1rem; }
+    .dot.p50 { background: rgba(153, 102, 255, 1); }
+    .dot.p70 { background: rgba(255, 99, 132, 1); }
+    .dot.actual { background: rgba(75, 192, 192, 1); }
   `]
 })
 export class ForecastComponent implements OnInit, AfterViewInit {
   @ViewChild('forecastChart') chartCanvas!: ElementRef;
   chart: any;
 
-  constructor(private apiService: ApiService) {}
+  constructor(private apiService: ApiService) { }
 
   ngOnInit() { }
 
@@ -72,12 +50,9 @@ export class ForecastComponent implements OnInit, AfterViewInit {
     });
   }
 
-  createChart(data: ForecastChart) {
+  private createChart(data: ForecastChart) {
     const ctx = this.chartCanvas.nativeElement.getContext('2d');
-    
-    if (this.chart) {
-      this.chart.destroy();
-    }
+    if (this.chart) this.chart.destroy();
 
     this.chart = new Chart(ctx, {
       type: 'line',
@@ -85,37 +60,40 @@ export class ForecastComponent implements OnInit, AfterViewInit {
         labels: data.labels,
         datasets: [
           {
-            label: 'Reale',
-            data: data.actual,
-            borderColor: '#ffffff',
-            borderWidth: 2,
-            pointRadius: 3,
+            label: 'Dati Reali',
+            data: data.actual_rounded || data.actual,
+            borderColor: 'rgba(75, 192, 192, 1)',
+            backgroundColor: 'rgba(75, 192, 192, 0.2)',
             fill: false,
-            tension: 0.3
+            tension: 0.4,
+            cubicInterpolationMode: 'monotone',
+            pointRadius: 4,
+            pointBackgroundColor: 'rgba(75, 192, 192, 1)'
           },
           {
             label: 'Previsione (P50)',
-            data: data.prediction,
-            borderColor: '#3b82f6',
-            backgroundColor: 'rgba(59, 130, 246, 0.1)',
-            borderWidth: 3,
-            pointRadius: 0,
-            fill: true,
-            tension: 0.3
+            data: data.prediction_rounded || data.prediction,
+            borderColor: 'rgba(153, 102, 255, 1)',
+            backgroundColor: 'rgba(153, 102, 255, 0.2)',
+            fill: false,
+            tension: 0.4,
+            cubicInterpolationMode: 'monotone',
+            pointRadius: 0
           },
           {
             label: 'Previsione Cautelativa (P70)',
-            data: data.prediction_p70,
-            borderColor: '#60a5fa',
-            borderDash: [5, 5],
-            borderWidth: 2,
-            pointRadius: 0,
+            data: data.prediction_p70_rounded || data.prediction_p70,
+            borderColor: 'rgba(255, 99, 132, 1)',
+            backgroundColor: 'rgba(255, 99, 132, 0.2)',
             fill: false,
-            tension: 0.3
+            tension: 0.4,
+            cubicInterpolationMode: 'monotone',
+            pointRadius: 0
           }
         ]
       },
       options: {
+        devicePixelRatio: window.devicePixelRatio || 2,
         responsive: true,
         maintainAspectRatio: false,
         plugins: {
@@ -124,11 +102,13 @@ export class ForecastComponent implements OnInit, AfterViewInit {
         scales: {
           y: {
             grid: { color: 'rgba(255, 255, 255, 0.05)' },
-            ticks: { color: '#94a3b8' }
+            ticks: { color: '#94a3b8' },
+            title: { display: true, text: 'Capacità (Istanze)', color: '#ffffff' }
           },
           x: {
-            grid: { display: false },
-            ticks: { color: '#94a3b8', autoSkip: true, maxTicksLimit: 10 }
+            grid: { color: 'rgba(255, 255, 255, 0.05)' },
+            ticks: { color: '#94a3b8', maxRotation: 45, minRotation: 45 },
+            title: { display: true, text: 'Tempo', color: '#ffffff' }
           }
         }
       }
