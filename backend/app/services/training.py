@@ -27,7 +27,7 @@ class TrainingService:
         # Parametri standard
         self.input_chunk_len = 168
         self.output_chunk_len = 8
-        self.n_epochs = 50
+        self.n_epochs = 1
         self.batch_size = 32
         self.hidden_size = 64
         self.ff_size = 64

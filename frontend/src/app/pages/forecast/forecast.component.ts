@@ -1,5 +1,4 @@
-import { Component, OnInit, ViewChild, ElementRef, AfterViewInit } from '@angular/core';
-import { CommonModule } from '@angular/common';
+import { Component, OnInit, ElementRef, signal, viewChild } from '@angular/core';
 import { ApiService } from '../../services/api.service';
 import { ForecastChart } from '../../models/api-data.model';
 import { Chart } from 'chart.js/auto';
@@ -7,51 +6,73 @@ import { Chart } from 'chart.js/auto';
 @Component({
   selector: 'app-forecast',
   standalone: true,
-  imports: [CommonModule],
+  imports: [],
   template: `
-    <div class="forecast-container">
+    <div class="page-container">
       <div class="page-header">
         <h2>Previsione Live (Forecast)</h2>
         <p class="subtitle">Capacità In-Use prevista per le prossime ore rispetto ai dati reali recenti.</p>
       </div>
 
-      <div class="legend-custom">
-        <div class="legend-item"><span class="dot actual"></span> Dati Reali</div>
-        <div class="legend-item"><span class="dot p50"></span> Previsione (P50)</div>
-        <div class="legend-item"><span class="dot p70"></span> Previsione Cautelativa (P70)</div>
-      </div>
+      @if (hasData()) {
+        <div class="legend-custom">
+          <div class="legend-item"><span class="dot actual"></span> Dati Reali</div>
+          <div class="legend-item"><span class="dot p50"></span> Previsione (P50)</div>
+          <div class="legend-item"><span class="dot p70"></span> Previsione Cautelativa (P70)</div>
+        </div>
+      }
 
       <div class="chart-container">
-        <div class="chart-wrapper">
+        @if (isLoading()) {
+          <div class="flex-row" style="height: 100%; justify-content: center;">
+             <div class="spinner"></div>
+             <span class="text-primary">Caricamento previsioni...</span>
+          </div>
+        }
+        
+        <div class="chart-wrapper" [hidden]="isLoading() || !hasData()">
           <canvas #forecastChart></canvas>
         </div>
       </div>
     </div>
   `,
-  styles: [`
-    .forecast-container { padding: 1rem; }
-    .dot.p50 { background: rgba(153, 102, 255, 1); }
-    .dot.p70 { background: rgba(255, 99, 132, 1); }
-    .dot.actual { background: rgba(75, 192, 192, 1); }
-  `]
+  styles: []
 })
-export class ForecastComponent implements OnInit, AfterViewInit {
-  @ViewChild('forecastChart') chartCanvas!: ElementRef;
+export class ForecastComponent implements OnInit {
+  isLoading = signal(true);
+  hasData = signal(false);
+  
+  chartCanvas = viewChild<ElementRef<HTMLCanvasElement>>('forecastChart');
   chart: any;
 
   constructor(private apiService: ApiService) { }
 
-  ngOnInit() { }
+  ngOnInit() {
+    this.fetchForecast();
+  }
 
-  ngAfterViewInit() {
+  fetchForecast() {
+    this.isLoading.set(true);
     this.apiService.getForecastHistory().subscribe({
-      next: (data: ForecastChart) => this.createChart(data),
-      error: (err: any) => console.error('Errore dati forecast:', err)
+      next: (data: ForecastChart) => {
+        this.hasData.set(true);
+        this.isLoading.set(false);
+        setTimeout(() => this.createChart(data), 0);
+      },
+      error: (err: any) => {
+        console.error('Errore dati forecast:', err);
+        this.isLoading.set(false);
+      }
     });
   }
 
   private createChart(data: ForecastChart) {
-    const ctx = this.chartCanvas.nativeElement.getContext('2d');
+    const canvas = this.chartCanvas()?.nativeElement;
+    if (!canvas) return;
+
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
     if (this.chart) this.chart.destroy();
 
     this.chart = new Chart(ctx, {
