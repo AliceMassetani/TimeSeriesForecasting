@@ -210,7 +210,6 @@ __marimo__/
 # Exclude large datasets (CSV, Parquet, etc.)
 # These should be managed via cloud storage, not version control
 datasets/
-data/
 *.parquet
 
 # Exclude model weights and training checkpoints
