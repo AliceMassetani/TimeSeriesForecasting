@@ -21,14 +21,6 @@
   margin-bottom: 3rem;
 }
 
-.sidebar-header h2 {
-  color: #ffffff;
-  font-size: 1.25rem;
-  font-weight: 700;
-  letter-spacing: -0.02em;
-  text-transform: uppercase;
-}
-
 .sidebar-nav {
   display: flex;
   flex-direction: column;
@@ -73,35 +65,60 @@
   background-color: #0f1116;
 }
 
-.top-bar {
-  padding: 1.5rem 2.5rem;
-  border-bottom: 1px solid #2d333f;
-}
-
-.top-bar h1 {
-  font-size: 1.5rem;
-  font-weight: 600;
-  color: #ffffff;
-}
+/* Redefined in later sections */
 
 .content-area {
   padding: 2.5rem;
   flex: 1;
 }
 
+/* Sidebar Header & Logo */
+.logo {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.brand-name {
+  font-size: 1.25rem;
+  font-weight: 800;
+  color: #ffffff;
+  letter-spacing: -0.02em;
+}
+
+.brand-name span {
+  color: #3b82f6;
+}
+
+.nav-label {
+  font-size: 0.65rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: #475569;
+  margin: 1.5rem 0 0.5rem 1rem;
+  letter-spacing: 0.05em;
+}
+
+/* Sidebar Footer Refined */
 .sidebar-footer {
   margin-top: auto;
   padding-top: 1.5rem;
-  font-size: 0.8rem;
-  color: #64748b;
+  border-top: 1px solid #2d333f;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.status-container {
   display: flex;
   align-items: center;
   gap: 0.5rem;
+  font-size: 0.8rem;
+  color: #94a3b8;
 }
 
-.status-indicator {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background-color: #10b981;
+.version {
+  font-size: 0.7rem;
+  color: #475569;
+  font-family: monospace;
 }

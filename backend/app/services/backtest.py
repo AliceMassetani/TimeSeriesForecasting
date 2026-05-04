@@ -58,22 +58,33 @@ class BacktestService:
         forecast = self.model.historical_forecasts(series, start=self.model.input_chunk_length, forecast_horizon=2, stride=1, num_samples=200, retrain=False, last_points_only=True)
         
         forecast_p50 = forecast.quantile(0.5)
-        forecast_p70 = forecast.quantile(0.7)
+        forecast_p90 = forecast.quantile(0.9)
+        forecast_p10 = forecast.quantile(0.1)
         metrics = BacktestMetrics(rmse=rmse(series, forecast_p50), mse=mse(series, forecast_p50), mae=mae(series, forecast_p50), r2=r2_score(series, forecast_p50))
         
         results = []
         df_p50 = forecast_p50.to_dataframe()
-        df_p70 = forecast_p70.to_dataframe()
+        df_p90 = forecast_p90.to_dataframe()
+        df_p10 = forecast_p10.to_dataframe()
+
         for ts, row_p50 in df_p50.iterrows():
             real_val = df_clean.loc[df_clean['TimeStamp'] == ts, target]
             if real_val.empty: continue
             real = real_val.values[0]
             pred_p50 = row_p50.iloc[0]
-            pred_p70 = df_p70.loc[ts].iloc[0]
+            pred_p10 = df_p10.loc[ts].iloc[0]
+            pred_p90 = df_p90.loc[ts].iloc[0]
             results.append(BacktestResult(
-                timestamp=ts, prediction=pred_p50, prediction_p70=pred_p70, actual_value=real,
-                diff_instances=pred_p50 - real, prediction_rounded=round(pred_p50),
-                prediction_p70_rounded=round(pred_p70), actual_rounded=round(real),
+                timestamp=ts, 
+                prediction=pred_p50, 
+                prediction_p10=pred_p10,
+                prediction_p90=pred_p90, 
+                actual_value=real,
+                diff_instances=pred_p50 - real, 
+                prediction_rounded=round(pred_p50),
+                prediction_p10_rounded=round(pred_p10),
+                prediction_p90_rounded=round(pred_p90), 
+                actual_rounded=round(real),
                 diff_rounded_instances=round(pred_p50) - round(real)
             ))
         return {"results": results, "metrics": metrics}

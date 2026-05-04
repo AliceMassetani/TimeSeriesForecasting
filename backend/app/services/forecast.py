@@ -80,20 +80,37 @@ class ForecastService:
         # Prevediamo le prossime n ore
         prediction_series = self.model.predict(n=n, series=series, num_samples=200)
         forecast_p50_df = prediction_series.quantile(0.5).to_dataframe()
-        forecast_p70_df = prediction_series.quantile(0.7).to_dataframe()
+        forecast_p10_df = prediction_series.quantile(0.1).to_dataframe()
+        forecast_p90_df = prediction_series.quantile(0.9).to_dataframe()
         
         for ts, pred_row in forecast_p50_df.iterrows():
             pred_p50 = pred_row.iloc[0]
-            pred_p70 = forecast_p70_df.loc[ts].iloc[0]
+            pred_p10 = forecast_p10_df.loc[ts].iloc[0]
+            pred_p90 = forecast_p90_df.loc[ts].iloc[0]
             
             results.append(ForecastResult(
                 timestamp=ts,
                 prediction=pred_p50,
-                prediction_p70=pred_p70,
+                prediction_p10=pred_p10,
+                prediction_p90=pred_p90,
                 prediction_rounded=int(round(pred_p50)),
-                prediction_p70_rounded=int(round(pred_p70)),
+                prediction_p10_rounded=int(round(pred_p10)),
+                prediction_p90_rounded=int(round(pred_p90)),
                 actual_value=None
             ))
+
+        # --- BRIDGE THE GAP ---
+        # Colleghiamo l'ultimo punto storico alla prima previsione
+        if h_count > 0 and len(results) > h_count:
+            last_history = results[h_count - 1]
+            if last_history.actual_value is not None:
+                val = float(last_history.actual_value)
+                last_history.prediction = val
+                last_history.prediction_p10 = val
+                last_history.prediction_p90 = val
+                last_history.prediction_rounded = int(val)
+                last_history.prediction_p10_rounded = int(val)
+                last_history.prediction_p90_rounded = int(val)
         p_count = len(results) - h_count
             
         return {

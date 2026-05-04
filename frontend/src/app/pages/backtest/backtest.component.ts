@@ -65,8 +65,8 @@ import { DecimalPipe } from '@angular/common';
       @if (hasData()) {
         <div class="legend-custom">
           <div class="legend-item"><span class="dot actual"></span> Reale</div>
-          <div class="legend-item"><span class="dot p50"></span> Previsione</div>
-          <div class="legend-item"><span class="dot p70"></span> Previsione P70</div>
+          <div class="legend-item"><span class="dot p50"></span> Previsione (P50)</div>
+          <div class="legend-item"><span class="dot p90"></span> Area di Previsione (P10-P90)</div>
           <div class="legend-item"><span class="dot diff"></span> Differenza</div>
         </div>
       }
@@ -181,6 +181,46 @@ export class BacktestComponent implements OnInit {
         labels: data.labels,
         datasets: [
           {
+            label: 'P10',
+            data: data.prediction_p10_rounded,
+            borderColor: 'rgba(255, 99, 132, 0)',
+            pointRadius: 0,
+            fill: false,
+            tension: 0.4
+          },
+          {
+            label: 'Prediction Band (P10-P90)',
+            data: data.prediction_p90_rounded,
+            borderColor: 'rgba(255, 99, 132, 0.6)',
+            backgroundColor: 'rgba(255, 99, 132, 0.25)',
+            fill: 0, // Riempie verso il dataset index 0 (P10)
+            tension: 0.4,
+            borderWidth: 1,
+            cubicInterpolationMode: 'monotone',
+            pointRadius: 2
+          },
+          {
+            label: 'Prediction (P50)',
+            data: data.prediction_rounded,
+            borderColor: 'rgba(153, 102, 255, 1)',
+            backgroundColor: 'rgba(153, 102, 255, 0)',
+            fill: false,
+            tension: 0.4,
+            cubicInterpolationMode: 'monotone',
+            pointRadius: 2,
+            borderWidth: 2
+          },
+          {
+            label: 'Diff',
+            data: data.diff_rounded_instances,
+            borderColor: 'rgba(255, 159, 64, 1)',
+            backgroundColor: 'rgba(255, 159, 64, 0.1)',
+            fill: true,
+            tension: 0.4,
+            cubicInterpolationMode: 'monotone',
+            pointRadius: 2
+          },
+          {
             label: 'Actual',
             data: data.actual_rounded,
             borderColor: 'rgba(75, 192, 192, 1)',
@@ -189,36 +229,6 @@ export class BacktestComponent implements OnInit {
             tension: 0.4,
             cubicInterpolationMode: 'monotone',
             pointRadius: 4
-          },
-          {
-            label: 'Prediction',
-            data: data.prediction_rounded,
-            borderColor: 'rgba(153, 102, 255, 1)',
-            backgroundColor: 'rgba(153, 102, 255, 0.2)',
-            fill: false,
-            tension: 0.4,
-            cubicInterpolationMode: 'monotone',
-            pointRadius: 2
-          },
-          {
-            label: 'Diff',
-            data: data.diff_rounded_instances,
-            borderColor: 'rgba(255, 159, 64, 1)',
-            backgroundColor: 'rgba(255, 159, 64, 0.2)',
-            fill: true,
-            tension: 0.4,
-            cubicInterpolationMode: 'monotone',
-            pointRadius: 2
-          },
-          {
-            label: 'Prediction P70',
-            data: data.prediction_p70_rounded,
-            borderColor: 'rgba(255, 99, 132, 1)',
-            backgroundColor: 'rgba(255, 99, 132, 0.2)',
-            fill: false,
-            tension: 0.4,
-            cubicInterpolationMode: 'monotone',
-            pointRadius: 2
           }
         ]
       },

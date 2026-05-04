@@ -38,6 +38,15 @@ export class ApiService {
   }
 
   /**
+   * Avvia la generazione del forecast caricando un file CSV
+   */
+  runForecast(file: File): Observable<any> {
+    const formData = new FormData();
+    formData.append('file', file);
+    return this.http.post(`${this.apiUrl}/forecast/run`, formData);
+  }
+
+  /**
    * Avvia l'addestramento caricando un file CSV
    */
   trainModel(file: File): Observable<TrainingResult> {

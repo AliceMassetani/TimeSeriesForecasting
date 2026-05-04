@@ -13,10 +13,12 @@ class BacktestResult(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     timestamp: Mapped[datetime] = mapped_column(DateTime)
     prediction: Mapped[float] = mapped_column(Float) # Questo rimane il P50
-    prediction_p70: Mapped[float] = mapped_column(Float, nullable=True)
+    prediction_p10: Mapped[float] = mapped_column(Float, nullable=True)
+    prediction_p90: Mapped[float] = mapped_column(Float, nullable=True)
     actual_value: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     diff_instances: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     prediction_rounded: Mapped[int] = mapped_column(Integer) # Arrotondamento P50
-    prediction_p70_rounded: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    prediction_p10_rounded: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    prediction_p90_rounded: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     actual_rounded: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     diff_rounded_instances: Mapped[Optional[float]] = mapped_column(Float, nullable=True)

@@ -29,7 +29,16 @@ class ForecastRepository(IForecastRepository):
             df = pd.DataFrame(result.fetchall(), columns=list(result.keys()))
         
         if df.empty:
-            return ForecastChart(labels=[], prediction=[], prediction_rounded=[], actual=[])
+            return ForecastChart(
+                labels=[], 
+                prediction=[], 
+                prediction_p10=[],
+                prediction_p90=[],
+                prediction_rounded=[], 
+                prediction_p10_rounded=[],
+                prediction_p90_rounded=[],
+                actual=[]
+            )
 
         # Convertiamo tutto in 'object' per permettere a None di coesistere con i numeri
         # Senza astype(object), Pandas forzerebbe i None a tornare NaN per mantenere il tipo float
@@ -38,9 +47,11 @@ class ForecastRepository(IForecastRepository):
         return ForecastChart(
             labels=df['timestamp'].apply(lambda x: x.strftime('%Y-%m-%d %H:%M')).tolist(),
             prediction=df['prediction'].tolist(),
-            prediction_p70=df['prediction_p70'].tolist(),
+            prediction_p10=df['prediction_p10'].tolist(),
+            prediction_p90=df['prediction_p90'].tolist(),
             prediction_rounded=df['prediction_rounded'].tolist(),
-            prediction_p70_rounded=df['prediction_p70_rounded'].tolist(),
+            prediction_p10_rounded=df['prediction_p10_rounded'].tolist(),
+            prediction_p90_rounded=df['prediction_p90_rounded'].tolist(),
             actual=df['actual_value'].tolist()
         )
 

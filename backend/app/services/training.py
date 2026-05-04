@@ -27,7 +27,7 @@ class TrainingService:
         # Parametri standard
         self.input_chunk_len = 168
         self.output_chunk_len = 8
-        self.n_epochs = 1
+        self.n_epochs = 50
         self.batch_size = 32
         self.hidden_size = 64
         self.ff_size = 64
@@ -62,6 +62,21 @@ class TrainingService:
                 mode="min",
             )
 
+            # 4. Split dei dati (ho usato lo stesso di TSMixer_hourly, studiato sulla base dei dati orari di un anno e 3 mesi)
+            TEST_HOURS = 72
+            VAL_SPLIT = 0.20
+            
+            test_start_idx = len(series) - TEST_HOURS
+            train_series   = series[:test_start_idx]
+            test_series    = series[test_start_idx:]
+
+            # Internal validation split for early stopping (carved from training only,
+            # never from the backtest test window — avoids data leakage into evaluation)
+            val_len        = int(len(train_series) * VAL_SPLIT)
+            val_series     = train_series[-val_len:]      # last 20% of train
+            fit_series     = train_series[:-val_len]      # first 80% of train
+
+            # 5. Configurazione Modello
             model = TSMixerModel(
                 input_chunk_length=self.input_chunk_len,
                 output_chunk_length=self.output_chunk_len,
@@ -81,11 +96,26 @@ class TrainingService:
                 random_state=42,
             )
 
-            # 4. Addestramento
+            # 6. Addestramento
             print(f"Inizio addestramento TSMixer su {len(series)} record...")
-            model.fit(series=series, verbose=False)
+            model.fit(series=fit_series, val_series=val_series, verbose=False)
 
-            # 5. Salvataggio (Come Candidato, non tocca la produzione)
+            # 7. Valutazione (Backtest sui dati di test mai visti)
+            print(f"Calcolo metriche di validazione sui dati di test (start={test_start_idx})...")
+            from darts.metrics import mse, mae, rmse, r2_score
+            
+            # Generiamo le previsioni storiche sulla porzione di test
+            # n=self.output_chunk_len indica che prevediamo 8 ore alla volta
+            hist_forecasts = model.historical_forecasts(
+                series=series,
+                start=test_start_idx,
+                forecast_horizon=self.output_chunk_len,
+                stride=1,
+                retrain=False,
+                verbose=False
+            )
+
+            # 8. Salvataggio (Come Candidato, non tocca la produzione)
             os.makedirs(MODEL_DIR, exist_ok=True)
             model.save(CANDIDATE_PATH)
             print(f"Modello candidato addestrato e salvato in {CANDIDATE_PATH}")
@@ -93,7 +123,13 @@ class TrainingService:
             return {
                 "status": "success",
                 "message": "Modello candidato addestrato con successo. Ora puoi caricarlo per testarlo o promuoverlo.",
-                "records_trained": len(series)
+                "records_trained": len(series),
+                "metrics": {
+                    "mse": float(mse(series, hist_forecasts)),
+                    "mae": float(mae(series, hist_forecasts)),
+                    "rmse": float(rmse(series, hist_forecasts)),
+                    "r2": float(r2_score(series, hist_forecasts))
+                }
             }
 
         except HTTPException as he:
