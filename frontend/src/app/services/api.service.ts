@@ -27,7 +27,7 @@ export class ApiService {
     if (limit) params = params.set('limit', limit.toString());
     if (startDate) params = params.set('start_date', startDate);
     if (endDate) params = params.set('end_date', endDate);
-    return this.http.get<BacktestChart>(`${this.apiUrl}/backtest/history`, {params});
+    return this.http.get<BacktestChart>(`${this.apiUrl}/backtest/history`, { params });
   }
 
 
@@ -40,10 +40,10 @@ export class ApiService {
   /**
    * Avvia la generazione del forecast caricando un file CSV
    */
-  runForecast(file: File): Observable<any> {
+  runForecast(file: File, historyHours: number = -1): Observable<any> {
     const formData = new FormData();
     formData.append('file', file);
-    return this.http.post(`${this.apiUrl}/forecast/run`, formData);
+    return this.http.post(`${this.apiUrl}/forecast/run?history_hours=${historyHours}`, formData);
   }
 
   /**

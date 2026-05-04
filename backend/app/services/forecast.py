@@ -48,10 +48,10 @@ class ForecastService:
         else:
             print(f"ERRORE: Modello {model_type} non trovato in {path}")
 
-    def run_forecast(self, df: pd.DataFrame, target: str, n: int = 2) -> dict:
+    def run_forecast(self, df: pd.DataFrame, target: str, n: int = 2, history_hours: int = -1) -> dict:
         """
-        Salva l'ultima settimana di dati reali e genera n ore di previsioni.
-        Restituisce un dizionario con i risultati e i conteggi.
+        Salva una porzione di dati reali e genera n ore di previsioni.
+        history_hours: quante ore di storico includere (se -1, prende tutto).
         """
         if self.model is None:
             raise RuntimeError("Il modello non è stato caricato correttamente.")
@@ -59,11 +59,14 @@ class ForecastService:
         # 1. Pulizia e ordinamento
         df_clean = df.sort_values("TimeStamp").reset_index(drop=True)
         
-        # 2. Estraiamo l'ultima settimana di dati reali (max 168 ore)
-        last_week_df = df_clean.tail(168)
+        # 2. Estraiamo lo storico richiesto (tail prende gli ultimi N elementi)
+        if history_hours == -1 or history_hours >= len(df_clean):
+            history_df = df_clean
+        else:
+            history_df = df_clean.tail(history_hours)
+            
         results = []
-        
-        for _, row in last_week_df.iterrows():
+        for _, row in history_df.iterrows():
             results.append(ForecastResult(
                 timestamp=row['TimeStamp'],
                 actual_value=int(row[target]),
@@ -74,7 +77,7 @@ class ForecastService:
 
         # 3. Preparazione serie per Darts e Previsione
         series = fill_missing_values(
-            TimeSeries.from_dataframe(df_clean, time_col="TimeStamp", value_cols=target, freq="h")
+            TimeSeries.from_dataframe(history_df, time_col="TimeStamp", value_cols=target, freq="h")
         )
 
         # Prevediamo le prossime n ore
@@ -119,13 +122,12 @@ class ForecastService:
             "prediction_count": p_count
         }
 
-    def run_forecast_pipeline(self, df: pd.DataFrame, target: str, repository, n: int = 2) -> dict:
+    def run_forecast_pipeline(self, df: pd.DataFrame, target: str, repository, n: int = 2, history_hours: int = -1) -> dict:
         """
         Pipeline: Cancella vecchi forecast e salva i nuovi.
-        Restituisce i dettagli dell'operazione.
         """
         repository.delete_all()
-        data = self.run_forecast(df, target, n)
+        data = self.run_forecast(df, target, n, history_hours)
         total = repository.create_bulk(data["results"])
         
         return {

@@ -24,12 +24,21 @@ import { Chart } from 'chart.js/auto';
             <input type="file" (change)="onFileSelected($event)" accept=".csv" style="display: none;">
             <span class="upload-btn">Sfoglia CSV</span>
           </label>
+
+          <select #rangeSelect (change)="historyWindow.set(parseRange(rangeSelect.value))" class="upload-btn sleek-select">
+            <option value="168">1 Week</option>
+            <option value="336">2 Weeks</option>
+            <option value="720">1 Month</option>
+            <option value="-1" selected>All Data</option>
+          </select>
+
           <button 
             class="primary-btn" 
             (click)="runForecast()" 
             [disabled]="!selectedFile() || isForecasting()">
             {{ isForecasting() ? 'Generazione...' : 'Aggiorna Previsioni' }}
           </button>
+          
           @if (selectedFile()) {
             <span class="subtitle" style="margin-top: 0;">File: {{ selectedFile()?.name }}</span>
           }
@@ -44,28 +53,60 @@ import { Chart } from 'chart.js/auto';
         </div>
       }
 
-      <div class="chart-container">
-        @if (isLoading()) {
-          <div class="flex-row" style="height: 100%; justify-content: center;">
-             <div class="spinner"></div>
-             <span class="text-primary">Caricamento grafico...</span>
+      @if (hasData() || isLoading()) {
+        <div class="chart-container">
+          @if (isLoading()) {
+            <div class="flex-row" style="height: 100%; justify-content: center;">
+               <div class="spinner"></div>
+               <span class="text-primary">Caricamento grafico...</span>
+            </div>
+          }
+          
+          <div class="chart-wrapper" [hidden]="isLoading() || !hasData()">
+            <canvas #forecastChart></canvas>
           </div>
-        }
-        
-        <div class="chart-wrapper" [hidden]="isLoading() || !hasData()">
-          <canvas #forecastChart></canvas>
         </div>
-      </div>
+      }
     </div>
   `,
-  styles: []
+  styles: [`
+    .sleek-select {
+      background: rgba(255, 255, 255, 0.05) !important;
+      border: 1px solid rgba(255, 255, 255, 0.1) !important;
+      color: #ffffff !important;
+      padding: 0 15px !important;
+      height: 42px !important;
+      min-width: 140px;
+      cursor: pointer;
+      outline: none;
+      appearance: none;
+      -webkit-appearance: none;
+      background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e") !important;
+      background-repeat: no-repeat !important;
+      background-position: right 10px center !important;
+      background-size: 16px !important;
+    }
+    .sleek-select option {
+      background-color: #1e293b;
+      color: white;
+    }
+    .sleek-select:hover {
+      border-color: var(--primary-color, #6366f1) !important;
+      background-color: rgba(255, 255, 255, 0.08) !important;
+    }
+  `]
 })
 export class ForecastComponent implements OnInit {
   isLoading = signal(true);
   isForecasting = signal(false);
   hasData = signal(false);
   selectedFile = signal<File | null>(null);
-  
+  historyWindow = signal(-1);
+
+  parseRange(val: string): number {
+    return parseInt(val);
+  }
+
   chartCanvas = viewChild<ElementRef<HTMLCanvasElement>>('forecastChart');
   chart: any;
 
@@ -87,7 +128,7 @@ export class ForecastComponent implements OnInit {
     if (!file) return;
 
     this.isForecasting.set(true);
-    this.apiService.runForecast(file).subscribe({
+    this.apiService.runForecast(file, this.historyWindow()).subscribe({
       next: (res: any) => {
         console.log('Forecast completato:', res);
         this.isForecasting.set(false);
@@ -133,10 +174,10 @@ export class ForecastComponent implements OnInit {
 
     if (lastActualIndex !== -1) {
       const lastActualValue = data.actual_rounded?.[lastActualIndex] ?? data.actual[lastActualIndex];
-      
+
       if (lastActualValue !== null && lastActualValue !== undefined) {
         const bridgeVal = Number(lastActualValue);
-        
+
         // Assicuriamoci che gli array esistano e siano della lunghezza corretta
         const updateVal = (arr: any[] | undefined, idx: number, val: number) => {
           if (arr && idx >= 0 && idx < arr.length) {

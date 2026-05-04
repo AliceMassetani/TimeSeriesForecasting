@@ -39,9 +39,14 @@ async def clear_forecasts(db: Session = Depends(get_db)):
         raise HTTPException(status_code=500, detail=f"Errore durante la pulizia: {str(e)}")
 
 @router.post("/run")
-async def run_forecast_upload(file: UploadFile = File(...), db: Session = Depends(get_db)):
+async def run_forecast_upload(
+    file: UploadFile = File(...), 
+    history_hours: int = -1,
+    db: Session = Depends(get_db)
+):
     """
     Carica un CSV, lo pulisce tramite DataProcessingService e genera previsioni.
+    history_hours: quante ore di storico includere.
     """
     TARGET = "InUseCapacity"
     repo = ForecastRepository(db)
@@ -52,8 +57,8 @@ async def run_forecast_upload(file: UploadFile = File(...), db: Session = Depend
         # 1. Pulizia e Validazione Dati (SOLID: Delega la responsabilità al service specifico)
         df = data_processing_service.process_aws_csv(contents, TARGET)
 
-        # 2. Generazione Forecast (default horizon = 2 ore)
-        res = forecast_service.run_forecast_pipeline(df, TARGET, repo)
+        # 2. Generazione Forecast
+        res = forecast_service.run_forecast_pipeline(df, TARGET, repo, history_hours=history_hours)
         
         return {
             "message": f"Forecast completato! Storico: {res['history']} ore, Previsioni: {res['predictions']} ore.",
