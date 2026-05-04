@@ -215,13 +215,13 @@ export class ForecastComponent implements OnInit {
           {
             label: 'Area di Previsione (P10-P90)',
             data: data.prediction_p90_rounded || data.prediction_p90,
-            borderColor: 'rgba(255, 99, 132, 0.5)',
-            backgroundColor: 'rgba(255, 99, 132, 0.25)',
+            borderColor: 'rgba(153, 102, 255, 0.5)',
+            backgroundColor: 'rgba(153, 102, 255, 0.3)',
             fill: 0, // Riempie verso il dataset index 0 (P10)
             tension: 0.4,
-            borderWidth: 1,
+            borderWidth: 0,
             cubicInterpolationMode: 'monotone',
-            pointRadius: 2
+            pointRadius: 0
           },
           {
             label: 'Previsione (P50)',
@@ -256,14 +256,27 @@ export class ForecastComponent implements OnInit {
         },
         scales: {
           y: {
+            beginAtZero: true,
             grid: { color: 'rgba(255, 255, 255, 0.05)' },
             ticks: { color: '#94a3b8' },
-            title: { display: true, text: 'Capacità (Istanze)', color: '#ffffff' }
+            title: { 
+              display: true, 
+              text: 'Capacità (Istanze)', 
+              color: '#ffffff',
+              font: { size: 16, weight: 'bold', family: 'Inter' },
+              padding: { bottom: 20 }
+            }
           },
           x: {
             grid: { color: 'rgba(255, 255, 255, 0.05)' },
             ticks: { color: '#94a3b8', maxRotation: 45, minRotation: 45 },
-            title: { display: true, text: 'Tempo', color: '#ffffff' }
+            title: { 
+              display: true, 
+              text: 'Tempo', 
+              color: '#ffffff',
+              font: { size: 16, weight: 'bold', family: 'Inter' },
+              padding: { top: 20 }
+            }
           }
         }
       }

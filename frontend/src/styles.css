@@ -182,7 +182,7 @@ body {
 }
 
 .dot.p50 { background: rgba(153, 102, 255, 1); }
-.dot.p90 { background: rgba(255, 99, 132, 1); }
+.dot.p90 { background: rgba(153, 102, 255, 0.5); }
 .dot.actual { background: rgba(75, 192, 192, 1); }
 .dot.diff { background: rgba(255, 159, 64, 1); }
 

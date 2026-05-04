@@ -191,13 +191,13 @@ export class BacktestComponent implements OnInit {
           {
             label: 'Prediction Band (P10-P90)',
             data: data.prediction_p90_rounded,
-            borderColor: 'rgba(255, 99, 132, 0.6)',
-            backgroundColor: 'rgba(255, 99, 132, 0.25)',
+            borderColor: 'rgba(153, 102, 255, 0.5)',
+            backgroundColor: 'rgba(153,102,255,0.3)',
             fill: 0, // Riempie verso il dataset index 0 (P10)
             tension: 0.4,
-            borderWidth: 1,
+            borderWidth: 0,
             cubicInterpolationMode: 'monotone',
-            pointRadius: 2
+            pointRadius: 0
           },
           {
             label: 'Prediction (P50)',
@@ -241,13 +241,28 @@ export class BacktestComponent implements OnInit {
           title: { display: true, text: 'Analisi Backtest', color: '#ffffff' }
         },
         scales: {
+          y: {
+            beginAtZero: true,
+            ticks: { color: '#cccccc' },
+            grid: { color: 'rgba(255, 255, 255, 0.05)' },
+            title: { 
+              display: true, 
+              text: 'Capacità (Istanze)', 
+              color: '#ffffff',
+              font: { size: 16, weight: 'bold', family: 'Inter' },
+              padding: { bottom: 20 }
+            }
+          },
           x: {
             ticks: { color: '#cccccc', maxRotation: 45, minRotation: 45 },
-            grid: { color: 'rgba(255, 255, 255, 0.05)' }
-          },
-          y: {
-            ticks: { color: '#cccccc' },
-            grid: { color: 'rgba(255, 255, 255, 0.05)' }
+            grid: { color: 'rgba(255, 255, 255, 0.05)' },
+            title: { 
+              display: true, 
+              text: 'Tempo', 
+              color: '#ffffff',
+              font: { size: 16, weight: 'bold', family: 'Inter' },
+              padding: { top: 20 }
+            }
           }
         }
       }
