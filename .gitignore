@@ -217,7 +217,6 @@ datasets/
 checkpoints/
 *.pth
 *.h5
-*.ckpt
 *.bin
 
 # --- Infrastructure & Framework (Antigravity/Google) ---
