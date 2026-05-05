@@ -24,29 +24,46 @@ class TrainingService:
     """
     
     def __init__(self):
-        # Parametri standard
-        self.input_chunk_len = 168
-        self.output_chunk_len = 8
-        self.n_epochs = 50
-        self.batch_size = 32
-        self.hidden_size = 64
-        self.ff_size = 64
-        self.num_blocks = 2
-        self.dropout = 0.1
-        self.learning_rate = 1e-3
+        # Carica i parametri dal .env con fallback ai valori correnti
+        self.input_chunk_len = int(os.getenv("TRAINING_INPUT_CHUNK_LEN", 168))
+        self.output_chunk_len = int(os.getenv("TRAINING_OUTPUT_CHUNK_LEN", 8))
+        self.n_epochs = int(os.getenv("TRAINING_N_EPOCHS", 50))
+        self.batch_size = int(os.getenv("TRAINING_BATCH_SIZE", 32))
+        self.hidden_size = int(os.getenv("TRAINING_HIDDEN_SIZE", 64))
+        self.ff_size = int(os.getenv("TRAINING_FF_SIZE", 64))
+        self.num_blocks = int(os.getenv("TRAINING_NUM_BLOCKS", 2))
+        self.dropout = float(os.getenv("TRAINING_DROPOUT", 0.1))
+        self.learning_rate = float(os.getenv("TRAINING_LEARNING_RATE", 1e-3))
 
-    def run_training_pipeline(self, contents: bytes, target: str) -> dict:
+    def run_training_pipeline(self, contents: bytes, target: str, params: dict = None) -> dict:
         """
         Esegue la pipeline completa: Pulizia -> Training -> Salvataggio.
+        params: Dizionario opzionale con i parametri inseriti dall'utente.
         """
         try:
+            # Unisci i parametri di default con quelli passati (se presenti)
+            config = {
+                "input_chunk_len": self.input_chunk_len,
+                "output_chunk_len": self.output_chunk_len,
+                "n_epochs": self.n_epochs,
+                "batch_size": self.batch_size,
+                "hidden_size": self.hidden_size,
+                "ff_size": self.ff_size,
+                "num_blocks": self.num_blocks,
+                "dropout": self.dropout,
+                "learning_rate": self.learning_rate
+            }
+            if params:
+                # Sovrascrive solo i parametri effettivamente passati dall'utente
+                config.update({k: v for k, v in params.items() if v is not None})
+
             # 1. Pulizia Dati (Riutilizzo del service esistente)
             df = data_processing_service.process_aws_csv(contents, target)
             
-            if len(df) < self.input_chunk_len + self.output_chunk_len:
+            if len(df) < config["input_chunk_len"] + config["output_chunk_len"]:
                 raise HTTPException(
                     status_code=400, 
-                    detail=f"Dati insufficienti per il training. Necessari almeno {self.input_chunk_len + self.output_chunk_len} record."
+                    detail=f"Dati insufficienti per il training. Necessari almeno {config['input_chunk_len'] + config['output_chunk_len']} record."
                 )
 
             # 2. Creazione TimeSeries
@@ -78,16 +95,16 @@ class TrainingService:
 
             # 5. Configurazione Modello
             model = TSMixerModel(
-                input_chunk_length=self.input_chunk_len,
-                output_chunk_length=self.output_chunk_len,
-                hidden_size=self.hidden_size,
-                ff_size=self.ff_size,
-                num_blocks=self.num_blocks,
-                dropout=self.dropout,
+                input_chunk_length=config["input_chunk_len"],
+                output_chunk_length=config["output_chunk_len"],
+                hidden_size=config["hidden_size"],
+                ff_size=config["ff_size"],
+                num_blocks=config["num_blocks"],
+                dropout=config["dropout"],
                 likelihood=QuantileRegression(quantiles=[0.1, 0.3, 0.5, 0.7, 0.9]),
-                n_epochs=self.n_epochs,
-                batch_size=self.batch_size,
-                optimizer_kwargs={"lr": self.learning_rate},
+                n_epochs=config["n_epochs"],
+                batch_size=config["batch_size"],
+                optimizer_kwargs={"lr": config["learning_rate"]},
                 pl_trainer_kwargs={
                     "enable_progress_bar": False,
                     "callbacks": [early_stop],
@@ -109,7 +126,7 @@ class TrainingService:
             hist_forecasts = model.historical_forecasts(
                 series=series,
                 start=test_start_idx,
-                forecast_horizon=self.output_chunk_len,
+                forecast_horizon=config["output_chunk_len"],
                 stride=1,
                 retrain=False,
                 verbose=False

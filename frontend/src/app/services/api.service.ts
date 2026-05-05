@@ -47,11 +47,20 @@ export class ApiService {
   }
 
   /**
-   * Avvia l'addestramento caricando un file CSV
+   * Avvia l'addestramento caricando un file CSV e parametri opzionali
    */
-  trainModel(file: File): Observable<TrainingResult> {
+  trainModel(file: File, params?: any): Observable<TrainingResult> {
     const formData = new FormData();
     formData.append('file', file);
+    
+    if (params) {
+      Object.keys(params).forEach(key => {
+        if (params[key] !== null && params[key] !== undefined) {
+          formData.append(key, params[key].toString());
+        }
+      });
+    }
+    
     return this.http.post<TrainingResult>(`${this.apiUrl}/train/`, formData);
   }
 

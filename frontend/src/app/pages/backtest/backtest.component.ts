@@ -4,6 +4,37 @@ import { ApiService } from '../../services/api.service';
 import { Chart } from 'chart.js/auto';
 import { DecimalPipe } from '@angular/common';
 
+interface BacktestMetrics {
+  rmse: number;
+  mse: number;
+  mae: number;
+  r2: number;
+}
+
+//Risposta di esecuzione backtest
+interface BacktestResponse {
+  message: string;
+  results_saved: number;
+  metrics: BacktestMetrics;
+  status: string;
+}
+
+//Dati per grafico backtest
+interface BacktestChartData {
+  labels: string[];
+  actual: number[];
+  prediction: number[];
+  prediction_p10: number[];
+  prediction_p90: number[];
+  diff_instances: number[];
+  prediction_rounded: number[];
+  prediction_p10_rounded: number[];
+  prediction_p90_rounded: number[];
+  actual_rounded: number[];
+  diff_rounded_instances: number[];
+  metrics?: BacktestMetrics;
+}
+
 @Component({
   selector: 'app-backtest',
   standalone: true,
@@ -35,6 +66,38 @@ import { DecimalPipe } from '@angular/common';
             <span class="subtitle" style="margin-top: 0;">File: {{ selectedFile.name }}</span>
           }
         </div>
+
+        @if (isBacktesting()) {
+          <div class="flex-row mt-1-5 text-primary">
+            <div class="spinner"></div>
+            <span style="font-weight: 500;">Esecuzione Backtest in corso... L'operazione può richiedere tempo per file grandi.</span>
+          </div>
+        }
+
+        <!-- RISULTATO BACKTEST (SUCCESSO) -->
+        @if (backtestResult()) {
+          <div class="alert-box success" style="margin-top: 1.5rem;">
+            <span class="alert-icon">✓</span>
+            <div class="alert-content">
+              <strong>Backtest Completato!</strong>
+              <p>{{ backtestResult()?.message }}</p>
+            </div>
+          </div>
+        }
+
+        <!-- AVVISO DATI TAGLIATI -->
+        @if (dataCapped()) {
+          <div class="alert-box warning" style="margin-top: 1.5rem;">
+            <span class="alert-icon">⚠️</span>
+            <div class="alert-content">
+              <strong>Visualizzazione limitata</strong>
+              <p>
+                Il file contiene {{ originalPointsCount() }} punti. Per garantire la fluidità del browser, 
+                stiamo mostrando solo gli ultimi 1.400 punti (circa 2 mesi di dati).
+              </p>
+            </div>
+          </div>
+        }
       </div>
 
       <!-- 2. VISUALIZZA STORICO -->
@@ -59,6 +122,16 @@ import { DecimalPipe } from '@angular/common';
             {{ isLoadingChart() ? 'Caricamento...' : 'Vedi grafico' }}
           </button>
         </div>      
+
+        <!-- ERRORE CARICAMENTO STORICO -->
+        @if (loadError()) {
+          <div class="alert-box error" style="margin-top: 1.5rem;">
+            <span class="alert-icon">✕</span>
+            <div class="alert-content">
+              <p>{{ loadError() }}</p>
+            </div>
+          </div>
+        }
       </div>
 
       <!-- GRAFICO E LEGENDA -->
@@ -72,8 +145,10 @@ import { DecimalPipe } from '@angular/common';
       }
 
       <div class="chart-container" [hidden]="!hasData()">
-        <div class="chart-wrapper">
-          <canvas #backtestChart></canvas>
+        <div class="chart-scroll-container">
+          <div class="chart-wrapper" [style.width]="getChartWidth()">
+            <canvas #backtestChart></canvas>
+          </div>
         </div>
       </div>
       
@@ -100,7 +175,7 @@ import { DecimalPipe } from '@angular/common';
       }
     </div>
   `,
-  styles: [] 
+  styles: []
 })
 export class BacktestComponent implements OnInit {
   selectedFile: File | null = null;
@@ -111,7 +186,19 @@ export class BacktestComponent implements OnInit {
   isBacktesting = signal(false);
   isLoadingChart = signal(false);
   hasData = signal(false);
-  metrics = signal<any>(null);
+  metrics = signal<BacktestMetrics | null>(null);
+  backtestResult = signal<BacktestResponse | null>(null);
+  backtestError = signal<string | null>(null);
+  dataCapped = signal(false);
+  originalPointsCount = signal(0);
+  loadError = signal<string | null>(null);
+  chartData: BacktestChartData | null = null;
+
+  getChartWidth() {
+    if (!this.chartData || !this.chartData.labels) return '100%';
+    const points = this.chartData.labels.length;
+    return `${points * 22}px`;
+  }
 
   chartCanvas = viewChild<ElementRef<HTMLCanvasElement>>('backtestChart');
   chart: any;
@@ -128,13 +215,17 @@ export class BacktestComponent implements OnInit {
 
   runBacktest() {
     if (!this.selectedFile) return;
-    
+
     console.log('--- AVVIO BACKTEST ---');
     this.isBacktesting.set(true);
-    
+    this.backtestResult.set(null);
+    this.backtestError.set(null);
+    this.dataCapped.set(false);
+
     this.apiService.runBacktest(this.selectedFile).subscribe({
-      next: (response: any) => {
-        console.log('--- BACKTEST COMPLETATO CON SUCCESSO ---', response);
+      next: (response: BacktestResponse) => {
+        console.log('--- BACKTEST COMPLETATO ---', response);
+        this.backtestResult.set(response);
         this.metrics.set(response.metrics);
         this.loadBacktestChart();
         this.isBacktesting.set(false);
@@ -142,7 +233,8 @@ export class BacktestComponent implements OnInit {
       error: (err: any) => {
         console.error('--- ERRORE BACKTEST ---', err);
         this.isBacktesting.set(false);
-        alert('Errore durante il backtest.');
+        const detail = err.error?.detail || 'Errore durante l\'esecuzione del backtest.';
+        this.backtestError.set(detail);
       }
     });
   }
@@ -150,22 +242,45 @@ export class BacktestComponent implements OnInit {
   loadBacktestChart() {
     console.log('--- CARICAMENTO STORICO BACKTEST ---');
     this.isLoadingChart.set(true);
-    
+    this.loadError.set(null);
+    this.dataCapped.set(false);
+
     this.apiService.getBacktestHistory(this.limit, this.startDate, this.endDate).subscribe({
-      next: (data: any) => {
+      next: (data: BacktestChartData) => {
         console.log('--- STORICO CARICATO ---', data);
-        this.metrics.set(data.metrics);
+        this.metrics.set(data.metrics || null);
         this.createChart(data);
         this.isLoadingChart.set(false);
       },
       error: (err: any) => {
         console.error('--- ERRORE CARICAMENTO STORICO ---', err);
         this.isLoadingChart.set(false);
+        const detail = err.error?.detail || 'Errore nel recupero dello storico backtest.';
+        this.loadError.set(detail);
       }
     });
   }
 
-  private createChart(data: any) {
+  private createChart(data: BacktestChartData) {
+    // --- LIMITE TECNICO CANVAS (STESSO DEL FORECAST) ---
+    const MAX_POINTS = 1400;
+    this.dataCapped.set(false);
+    
+    let displayData = { ...data };
+    if (data.labels && data.labels.length > MAX_POINTS) {
+        this.dataCapped.set(true);
+        this.originalPointsCount.set(data.labels.length);
+        const startIdx = data.labels.length - MAX_POINTS;
+        
+        displayData.labels = data.labels.slice(startIdx);
+        displayData.prediction_p10_rounded = data.prediction_p10_rounded.slice(startIdx);
+        displayData.prediction_p90_rounded = data.prediction_p90_rounded.slice(startIdx);
+        displayData.prediction_rounded = data.prediction_rounded.slice(startIdx);
+        displayData.diff_rounded_instances = data.diff_rounded_instances.slice(startIdx);
+        displayData.actual_rounded = data.actual_rounded.slice(startIdx);
+    }
+
+    this.chartData = displayData;
     this.hasData.set(true);
     const canvas = this.chartCanvas()?.nativeElement;
     if (!canvas) return;
@@ -178,11 +293,11 @@ export class BacktestComponent implements OnInit {
     this.chart = new Chart(context, {
       type: 'line',
       data: {
-        labels: data.labels,
+        labels: displayData.labels,
         datasets: [
           {
             label: 'P10',
-            data: data.prediction_p10_rounded,
+            data: displayData.prediction_p10_rounded,
             borderColor: 'rgba(255, 99, 132, 0)',
             pointRadius: 0,
             fill: false,
@@ -190,10 +305,10 @@ export class BacktestComponent implements OnInit {
           },
           {
             label: 'Prediction Band (P10-P90)',
-            data: data.prediction_p90_rounded,
+            data: displayData.prediction_p90_rounded,
             borderColor: 'rgba(153, 102, 255, 0.5)',
             backgroundColor: 'rgba(153,102,255,0.3)',
-            fill: 0, // Riempie verso il dataset index 0 (P10)
+            fill: 0, 
             tension: 0.4,
             borderWidth: 0,
             cubicInterpolationMode: 'monotone',
@@ -201,7 +316,7 @@ export class BacktestComponent implements OnInit {
           },
           {
             label: 'Prediction (P50)',
-            data: data.prediction_rounded,
+            data: displayData.prediction_rounded,
             borderColor: 'rgba(153, 102, 255, 1)',
             backgroundColor: 'rgba(153, 102, 255, 0)',
             fill: false,
@@ -212,7 +327,7 @@ export class BacktestComponent implements OnInit {
           },
           {
             label: 'Diff',
-            data: data.diff_rounded_instances,
+            data: displayData.diff_rounded_instances,
             borderColor: 'rgba(255, 159, 64, 1)',
             backgroundColor: 'rgba(255, 159, 64, 0.1)',
             fill: true,
@@ -222,7 +337,7 @@ export class BacktestComponent implements OnInit {
           },
           {
             label: 'Actual',
-            data: data.actual_rounded,
+            data: displayData.actual_rounded,
             borderColor: 'rgba(75, 192, 192, 1)',
             backgroundColor: 'rgba(75, 192, 192, 0.2)',
             fill: false,
@@ -245,9 +360,9 @@ export class BacktestComponent implements OnInit {
             beginAtZero: true,
             ticks: { color: '#cccccc' },
             grid: { color: 'rgba(255, 255, 255, 0.05)' },
-            title: { 
-              display: true, 
-              text: 'Capacità (Istanze)', 
+            title: {
+              display: true,
+              text: 'Capacità (Istanze)',
               color: '#ffffff',
               font: { size: 16, weight: 'bold', family: 'Inter' },
               padding: { bottom: 20 }
@@ -256,13 +371,13 @@ export class BacktestComponent implements OnInit {
           x: {
             ticks: { color: '#cccccc', maxRotation: 45, minRotation: 45 },
             grid: { color: 'rgba(255, 255, 255, 0.05)' },
-            title: { 
-              display: true, 
-              text: 'Tempo', 
+            title: {
+              display: true,
+              text: 'Tempo',
               color: '#ffffff',
               font: { size: 16, weight: 'bold', family: 'Inter' },
               padding: { top: 20 }
-            }
+             }
           }
         }
       }

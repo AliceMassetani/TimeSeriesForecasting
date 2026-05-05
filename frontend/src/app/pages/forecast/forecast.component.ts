@@ -1,4 +1,4 @@
-import { Component, OnInit, ElementRef, signal, viewChild } from '@angular/core';
+import { Component, OnInit, ElementRef, signal, viewChild, computed } from '@angular/core';
 import { ApiService } from '../../services/api.service';
 import { ForecastChart } from '../../models/api-data.model';
 import { Chart } from 'chart.js/auto';
@@ -25,7 +25,7 @@ import { Chart } from 'chart.js/auto';
             <span class="upload-btn">Sfoglia CSV</span>
           </label>
 
-          <select #rangeSelect (change)="historyWindow.set(parseRange(rangeSelect.value))" class="upload-btn sleek-select">
+          <select #rangeSelect (change)="historyWindow.set(parseRange(rangeSelect.value))" class="sleek-field">
             <option value="168">1 Week</option>
             <option value="336">2 Weeks</option>
             <option value="720">1 Month</option>
@@ -43,7 +43,42 @@ import { Chart } from 'chart.js/auto';
             <span class="subtitle" style="margin-top: 0;">File: {{ selectedFile()?.name }}</span>
           }
         </div>
+
+        <!-- ERRORE GENERAZIONE FORECAST -->
+        @if (forecastError()) {
+          <div class="alert-box error" style="margin-top: 1.5rem;">
+            <span class="alert-icon">✕</span>
+            <div class="alert-content">
+              <strong>Errore nella generazione del Forecast</strong>
+              <p>{{ forecastError() }}</p>
+            </div>
+          </div>
+        }
       </div>
+
+      <!-- ERRORE CARICAMENTO DATI -->
+      @if (loadError()) {
+        <div class="alert-box error">
+          <span class="alert-icon">✕</span>
+          <div class="alert-content">
+            <p>{{ loadError() }}</p>
+          </div>
+        </div>
+      }
+
+      <!-- AVVISO DATI TAGLIATI -->
+      @if (dataCapped()) {
+        <div class="alert-box warning">
+          <span class="alert-icon">⚠️</span>
+          <div class="alert-content">
+            <strong>Visualizzazione limitata</strong>
+            <p>
+              Il file contiene {{ originalPointsCount() }} punti. Per garantire la fluidità del browser, 
+              stiamo mostrando solo gli ultimi 1.400 punti (circa 2 mesi di dati).
+            </p>
+          </div>
+        </div>
+      }
 
       @if (hasData()) {
         <div class="legend-custom">
@@ -62,37 +97,18 @@ import { Chart } from 'chart.js/auto';
             </div>
           }
           
-          <div class="chart-wrapper" [hidden]="isLoading() || !hasData()">
-            <canvas #forecastChart></canvas>
+          <div class="chart-scroll-container">
+            <div class="chart-wrapper" [style.width]="chartWidth()">
+              <canvas #forecastChart></canvas>
+            </div>
           </div>
         </div>
       }
     </div>
   `,
   styles: [`
-    .sleek-select {
-      background: rgba(255, 255, 255, 0.05) !important;
-      border: 1px solid rgba(255, 255, 255, 0.1) !important;
-      color: #ffffff !important;
-      padding: 0 15px !important;
-      height: 42px !important;
-      min-width: 140px;
-      cursor: pointer;
-      outline: none;
-      appearance: none;
-      -webkit-appearance: none;
-      background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e") !important;
-      background-repeat: no-repeat !important;
-      background-position: right 10px center !important;
-      background-size: 16px !important;
-    }
-    .sleek-select option {
-      background-color: #1e293b;
-      color: white;
-    }
-    .sleek-select:hover {
-      border-color: var(--primary-color, #6366f1) !important;
-      background-color: rgba(255, 255, 255, 0.08) !important;
+    .chart-wrapper {
+      --chart-height: 400px;
     }
   `]
 })
@@ -102,6 +118,10 @@ export class ForecastComponent implements OnInit {
   hasData = signal(false);
   selectedFile = signal<File | null>(null);
   historyWindow = signal(-1);
+  forecastError = signal<string | null>(null);
+  loadError = signal<string | null>(null);
+  dataCapped = signal(false);
+  originalPointsCount = signal(0);
 
   parseRange(val: string): number {
     return parseInt(val);
@@ -109,6 +129,14 @@ export class ForecastComponent implements OnInit {
 
   chartCanvas = viewChild<ElementRef<HTMLCanvasElement>>('forecastChart');
   chart: any;
+  chartData = signal<ForecastChart | null>(null);
+
+  chartWidth = computed(() => {
+    const data = this.chartData();
+    if (!data || !data.labels) return '100%';
+    const points = data.labels.length;
+    return `${points * 22}px`;
+  });
 
   constructor(private apiService: ApiService) { }
 
@@ -128,6 +156,9 @@ export class ForecastComponent implements OnInit {
     if (!file) return;
 
     this.isForecasting.set(true);
+    this.forecastError.set(null);
+    this.dataCapped.set(false);
+
     this.apiService.runForecast(file, this.historyWindow()).subscribe({
       next: (res: any) => {
         console.log('Forecast completato:', res);
@@ -137,14 +168,17 @@ export class ForecastComponent implements OnInit {
       },
       error: (err) => {
         console.error('Errore durante il forecast:', err);
-        alert('Errore durante la generazione del forecast.');
         this.isForecasting.set(false);
+        const detail = err.error?.detail || 'Errore durante la generazione del forecast.';
+        this.forecastError.set(detail);
       }
     });
   }
 
   fetchForecast() {
     this.isLoading.set(true);
+    this.loadError.set(null);
+    this.dataCapped.set(false);
     this.apiService.getForecastHistory().subscribe({
       next: (data: ForecastChart) => {
         this.hasData.set(true);
@@ -154,43 +188,68 @@ export class ForecastComponent implements OnInit {
       error: (err: any) => {
         console.error('Errore dati forecast:', err);
         this.isLoading.set(false);
+        const detail = err.error?.detail || 'Errore nel recupero dei dati del forecast.';
+        this.loadError.set(detail);
       }
     });
   }
 
   private createChart(data: ForecastChart) {
+    // --- LIMITE TECNICO CANVAS ---
+    // I browser non supportano canvas più larghi di ~32k pixel.
+    // Con 22px per punto, il limite è circa 1400-1500 punti.
+    const MAX_POINTS = 1400;
+    
+    let displayData = { ...data };
+    if (data.labels.length > MAX_POINTS) {
+        this.dataCapped.set(true);
+        this.originalPointsCount.set(data.labels.length);
+        const startIdx = data.labels.length - MAX_POINTS;
+        
+        displayData.labels = data.labels.slice(startIdx);
+        displayData.actual = data.actual.slice(startIdx);
+        displayData.prediction = data.prediction.slice(startIdx);
+        displayData.prediction_p10 = data.prediction_p10.slice(startIdx);
+        displayData.prediction_p90 = data.prediction_p90.slice(startIdx);
+        
+        if (data.actual_rounded) displayData.actual_rounded = data.actual_rounded.slice(startIdx);
+        if (data.prediction_rounded) displayData.prediction_rounded = data.prediction_rounded.slice(startIdx);
+        if (data.prediction_p10_rounded) displayData.prediction_p10_rounded = data.prediction_p10_rounded.slice(startIdx);
+        if (data.prediction_p90_rounded) displayData.prediction_p90_rounded = data.prediction_p90_rounded.slice(startIdx);
+    }
+
+    this.chartData.set(displayData);
     const canvas = this.chartCanvas()?.nativeElement;
     if (!canvas) return;
 
     // --- BRIDGE THE GAP (FRONTEND) ---
-    // Trova l'ultimo punto storico reale
+    // Usiamo displayData invece di data
     let lastActualIndex = -1;
-    for (let i = data.actual.length - 1; i >= 0; i--) {
-      if (data.actual[i] !== null && data.actual[i] !== undefined) {
+    for (let i = displayData.actual.length - 1; i >= 0; i--) {
+      if (displayData.actual[i] !== null && displayData.actual[i] !== undefined) {
         lastActualIndex = i;
         break;
       }
     }
 
     if (lastActualIndex !== -1) {
-      const lastActualValue = data.actual_rounded?.[lastActualIndex] ?? data.actual[lastActualIndex];
+      const lastActualValue = displayData.actual_rounded?.[lastActualIndex] ?? displayData.actual[lastActualIndex];
 
       if (lastActualValue !== null && lastActualValue !== undefined) {
         const bridgeVal = Number(lastActualValue);
 
-        // Assicuriamoci che gli array esistano e siano della lunghezza corretta
         const updateVal = (arr: any[] | undefined, idx: number, val: number) => {
           if (arr && idx >= 0 && idx < arr.length) {
             arr[idx] = val;
           }
         };
 
-        updateVal(data.prediction, lastActualIndex, bridgeVal);
-        updateVal(data.prediction_p10, lastActualIndex, bridgeVal);
-        updateVal(data.prediction_p90, lastActualIndex, bridgeVal);
-        updateVal(data.prediction_rounded, lastActualIndex, Math.round(bridgeVal));
-        updateVal(data.prediction_p10_rounded, lastActualIndex, Math.round(bridgeVal));
-        updateVal(data.prediction_p90_rounded, lastActualIndex, Math.round(bridgeVal));
+        updateVal(displayData.prediction, lastActualIndex, bridgeVal);
+        updateVal(displayData.prediction_p10, lastActualIndex, bridgeVal);
+        updateVal(displayData.prediction_p90, lastActualIndex, bridgeVal);
+        updateVal(displayData.prediction_rounded, lastActualIndex, Math.round(bridgeVal));
+        updateVal(displayData.prediction_p10_rounded, lastActualIndex, Math.round(bridgeVal));
+        updateVal(displayData.prediction_p90_rounded, lastActualIndex, Math.round(bridgeVal));
       }
     }
 
@@ -202,11 +261,11 @@ export class ForecastComponent implements OnInit {
     this.chart = new Chart(ctx, {
       type: 'line',
       data: {
-        labels: data.labels,
+        labels: displayData.labels,
         datasets: [
           {
             label: 'P10',
-            data: data.prediction_p10_rounded || data.prediction_p10,
+            data: displayData.prediction_p10_rounded || displayData.prediction_p10,
             borderColor: 'rgba(255, 99, 132, 0)', // Trasparente
             pointRadius: 0,
             fill: false,
@@ -214,7 +273,7 @@ export class ForecastComponent implements OnInit {
           },
           {
             label: 'Area di Previsione (P10-P90)',
-            data: data.prediction_p90_rounded || data.prediction_p90,
+            data: displayData.prediction_p90_rounded || displayData.prediction_p90,
             borderColor: 'rgba(153, 102, 255, 0.5)',
             backgroundColor: 'rgba(153, 102, 255, 0.3)',
             fill: 0, // Riempie verso il dataset index 0 (P10)
@@ -225,7 +284,7 @@ export class ForecastComponent implements OnInit {
           },
           {
             label: 'Previsione (P50)',
-            data: data.prediction_rounded || data.prediction,
+            data: displayData.prediction_rounded || displayData.prediction,
             borderColor: 'rgba(153, 102, 255, 1)',
             backgroundColor: 'rgba(153, 102, 255, 0)',
             fill: false,
@@ -236,7 +295,7 @@ export class ForecastComponent implements OnInit {
           },
           {
             label: 'Dati Reali',
-            data: data.actual_rounded || data.actual,
+            data: displayData.actual_rounded || displayData.actual,
             borderColor: 'rgba(75, 192, 192, 1)',
             backgroundColor: 'rgba(75, 192, 192, 0.2)',
             fill: false,

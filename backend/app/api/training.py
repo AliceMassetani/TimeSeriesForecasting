@@ -1,4 +1,5 @@
-from fastapi import APIRouter, UploadFile, File, HTTPException
+from fastapi import APIRouter, UploadFile, File, HTTPException, Form
+from typing import Optional
 from ..services.training import training_service
 from ..services.forecast import forecast_service
 from ..services.backtest import backtest_service
@@ -6,15 +7,39 @@ from ..services.backtest import backtest_service
 router = APIRouter()
 
 @router.post("/")
-async def train_model(file: UploadFile = File(...)):
+async def train_model(
+    file: UploadFile = File(...),
+    input_chunk_len: Optional[int] = Form(None),
+    output_chunk_len: Optional[int] = Form(None),
+    n_epochs: Optional[int] = Form(None),
+    batch_size: Optional[int] = Form(None),
+    hidden_size: Optional[int] = Form(None),
+    ff_size: Optional[int] = Form(None),
+    num_blocks: Optional[int] = Form(None),
+    dropout: Optional[float] = Form(None),
+    learning_rate: Optional[float] = Form(None)
+):
     """
     Endpoint per addestrare un nuovo modello CANDIDATO (sfidante).
-    Non tocca il modello in produzione finché non viene promosso.
     """
     TARGET = "InUseCapacity"
+    params = {
+        "input_chunk_len": input_chunk_len,
+        "output_chunk_len": output_chunk_len,
+        "n_epochs": n_epochs,
+        "batch_size": batch_size,
+        "hidden_size": hidden_size,
+        "ff_size": ff_size,
+        "num_blocks": num_blocks,
+        "dropout": dropout,
+        "learning_rate": learning_rate
+    }
+    
+    print(f"DEBUG: Parametri ricevuti dall'API: {params}")
+    
     try:
         contents = await file.read()
-        result = training_service.run_training_pipeline(contents, TARGET)
+        result = training_service.run_training_pipeline(contents, TARGET, params=params)
         return result
     except HTTPException as he:
         raise he
