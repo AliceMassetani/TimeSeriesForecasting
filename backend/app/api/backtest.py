@@ -1,4 +1,4 @@
-from fastapi import APIRouter, UploadFile, File, Depends, HTTPException
+from fastapi import APIRouter, UploadFile, File, Depends, HTTPException, Form
 from sqlalchemy.orm import Session
 import pandas as pd
 import io
@@ -27,9 +27,19 @@ async def clear_backtests(db: Session = Depends(get_db)):
         raise HTTPException(status_code=500, detail=f"Errore durante la pulizia: {str(e)}")
 
 @router.post("/run")
-async def run_backtest_upload(file: UploadFile = File(...), db: Session = Depends(get_db)):
+async def run_backtest_upload(
+    file: UploadFile = File(...),
+    pid_kp: Optional[float] = Form(None),
+    pid_ki: Optional[float] = Form(None),
+    pid_kd: Optional[float] = Form(None),
+    pid_exp: Optional[float] = Form(None),
+    pid_scale_down: Optional[float] = Form(None),
+    pid_quantile: Optional[float] = Form(None),
+    db: Session = Depends(get_db)
+):
     """
     Endpoint per caricare un CSV, eseguire un backtest e salvare i risultati.
+    Accetta parametri PID e quantile opzionali (default da config).
     """
     TARGET = "InUseCapacity"
     repo = BacktestRepository(db)
@@ -40,9 +50,13 @@ async def run_backtest_upload(file: UploadFile = File(...), db: Session = Depend
         # 1. Pulizia e Validazione Dati (Riutilizzo lo stesso service del Forecast)
         df = data_processing_service.process_aws_csv(contents, TARGET)
         
-        # 2. Esecuzione Backtest (con metriche in-memory)
-        res = backtest_service.run_backtest_pipeline(df, TARGET, repo)
-        
+        # 2. Esecuzione Pipeline
+        res = backtest_service.run_backtest_pipeline(
+            df, TARGET, repo,
+            pid_kp=pid_kp, pid_ki=pid_ki, pid_kd=pid_kd,
+            pid_exp=pid_exp, pid_scale_down=pid_scale_down,
+            pid_quantile=pid_quantile
+        )
         return {
             "message": "Backtest completato con successo",
             "results_saved": res["count"],

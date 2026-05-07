@@ -12,3 +12,7 @@ class Metrics(Base):
     rmse = Column(Float)
     mse = Column(Float)
     r2 = Column(Float)
+    mse_pid = Column(Float, nullable=True)
+    rmse_pid = Column(Float, nullable=True)
+    mae_pid = Column(Float, nullable=True)
+    r2_pid = Column(Float, nullable=True)

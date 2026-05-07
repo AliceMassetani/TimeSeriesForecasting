@@ -199,23 +199,23 @@ export class ForecastComponent implements OnInit {
     // I browser non supportano canvas più larghi di ~32k pixel.
     // Con 22px per punto, il limite è circa 1400-1500 punti.
     const MAX_POINTS = 1400;
-    
+
     let displayData = { ...data };
     if (data.labels.length > MAX_POINTS) {
-        this.dataCapped.set(true);
-        this.originalPointsCount.set(data.labels.length);
-        const startIdx = data.labels.length - MAX_POINTS;
-        
-        displayData.labels = data.labels.slice(startIdx);
-        displayData.actual = data.actual.slice(startIdx);
-        displayData.prediction = data.prediction.slice(startIdx);
-        displayData.prediction_p10 = data.prediction_p10.slice(startIdx);
-        displayData.prediction_p90 = data.prediction_p90.slice(startIdx);
-        
-        if (data.actual_rounded) displayData.actual_rounded = data.actual_rounded.slice(startIdx);
-        if (data.prediction_rounded) displayData.prediction_rounded = data.prediction_rounded.slice(startIdx);
-        if (data.prediction_p10_rounded) displayData.prediction_p10_rounded = data.prediction_p10_rounded.slice(startIdx);
-        if (data.prediction_p90_rounded) displayData.prediction_p90_rounded = data.prediction_p90_rounded.slice(startIdx);
+      this.dataCapped.set(true);
+      this.originalPointsCount.set(data.labels.length);
+      const startIdx = data.labels.length - MAX_POINTS;
+
+      displayData.labels = data.labels.slice(startIdx);
+      displayData.actual = data.actual.slice(startIdx);
+      displayData.prediction = data.prediction.slice(startIdx);
+      displayData.prediction_p10 = data.prediction_p10.slice(startIdx);
+      displayData.prediction_p90 = data.prediction_p90.slice(startIdx);
+
+      if (data.actual_rounded) displayData.actual_rounded = data.actual_rounded.slice(startIdx);
+      if (data.prediction_rounded) displayData.prediction_rounded = data.prediction_rounded.slice(startIdx);
+      if (data.prediction_p10_rounded) displayData.prediction_p10_rounded = data.prediction_p10_rounded.slice(startIdx);
+      if (data.prediction_p90_rounded) displayData.prediction_p90_rounded = data.prediction_p90_rounded.slice(startIdx);
     }
 
     this.chartData.set(displayData);
@@ -318,9 +318,9 @@ export class ForecastComponent implements OnInit {
             beginAtZero: true,
             grid: { color: 'rgba(255, 255, 255, 0.05)' },
             ticks: { color: '#94a3b8' },
-            title: { 
-              display: true, 
-              text: 'Capacità (Istanze)', 
+            title: {
+              display: true,
+              text: 'Capacità (Istanze)',
               color: '#ffffff',
               font: { size: 16, weight: 'bold', family: 'Inter' },
               padding: { bottom: 20 }
@@ -329,9 +329,9 @@ export class ForecastComponent implements OnInit {
           x: {
             grid: { color: 'rgba(255, 255, 255, 0.05)' },
             ticks: { color: '#94a3b8', maxRotation: 45, minRotation: 45 },
-            title: { 
-              display: true, 
-              text: 'Tempo', 
+            title: {
+              display: true,
+              text: 'Tempo',
               color: '#ffffff',
               font: { size: 16, weight: 'bold', family: 'Inter' },
               padding: { top: 20 }

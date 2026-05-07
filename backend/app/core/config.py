@@ -10,6 +10,13 @@ class Settings(BaseSettings):
     DB_HOST: str
     DB_NAME: str
 
+    # PID Controller Settings — P+D stabile, Kd ridotto per evitare oscillazioni
+    PID_KP: float = 0.3
+    PID_KI: float = 0.0
+    PID_KD: float = 0.05
+    PID_DERIVATIVE_EXP: float = 1.0
+    PID_SCALE_DOWN_PENALTY: float = 0.6
+
     # Configurazione Pydantic v2
     model_config = SettingsConfigDict(
         env_file=".env", 

@@ -18,7 +18,7 @@ export interface ForecastChart {
   prediction_p10_rounded: number[];
   prediction_p90_rounded: number[];
   actual: (number | null)[];
-  actual_rounded?: (number | null)[]; 
+  actual_rounded?: (number | null)[];
 }
 
 export interface BacktestChart {

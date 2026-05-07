@@ -31,9 +31,17 @@ export class ApiService {
   }
 
 
-  runBacktest(file: File): Observable<any> {
+  runBacktest(file: File, pidParams?: { kp?: number, ki?: number, kd?: number, exp?: number, scale_down?: number, quantile?: number }): Observable<any> {
     const formData = new FormData();
     formData.append('file', file);
+    if (pidParams) {
+      if (pidParams.kp !== undefined) formData.append('pid_kp', String(pidParams.kp));
+      if (pidParams.ki !== undefined) formData.append('pid_ki', String(pidParams.ki));
+      if (pidParams.kd !== undefined) formData.append('pid_kd', String(pidParams.kd));
+      if (pidParams.exp !== undefined) formData.append('pid_exp', String(pidParams.exp));
+      if (pidParams.scale_down !== undefined) formData.append('pid_scale_down', String(pidParams.scale_down));
+      if (pidParams.quantile !== undefined) formData.append('pid_quantile', String(pidParams.quantile));
+    }
     return this.http.post(`${this.apiUrl}/backtest/run`, formData);
   }
 

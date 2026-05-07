@@ -46,7 +46,13 @@ class BacktestRepository(IBacktestRepository):
 
         # RECUPERO LE METRICHE DALLA TABELLA 'metrics'
         m = self.db.query(Metrics).first()
-        metrics = BacktestMetrics(mse=m.mse, rmse=m.rmse, mae=m.mae, r2=m.r2) if m else None
+        metrics = BacktestMetrics(
+            mse=m.mse, rmse=m.rmse, mae=m.mae, r2=m.r2,
+            mse_pid=getattr(m, 'mse_pid', None), 
+            rmse_pid=getattr(m, 'rmse_pid', None), 
+            mae_pid=getattr(m, 'mae_pid', None), 
+            r2_pid=getattr(m, 'r2_pid', None)
+        ) if m else None
 
         return BacktestChart(
             labels=df['timestamp'].dt.strftime('%Y-%m-%d %H:%M').tolist(),
@@ -60,18 +66,24 @@ class BacktestRepository(IBacktestRepository):
             prediction_p90_rounded=df['prediction_p90_rounded'].tolist(),
             actual_rounded=df['actual_rounded'].tolist(),
             diff_rounded_instances=df['diff_rounded_instances'].tolist(),
+            prediction_pid=df['prediction_pid'].tolist() if 'prediction_pid' in df.columns else [],
+            prediction_pid_rounded=df['prediction_pid_rounded'].tolist() if 'prediction_pid_rounded' in df.columns else [],
             metrics=metrics
         )
 
     def save_metrics(self, metrics: BacktestMetrics):
         self.db.query(Metrics).delete()
-        new_metrics = Metrics(id=1, mse=metrics.mse, rmse=metrics.rmse, mae=metrics.mae, r2=metrics.r2)
+        new_metrics = Metrics(
+            id=1, 
+            mse=metrics.mse, rmse=metrics.rmse, mae=metrics.mae, r2=metrics.r2,
+            mse_pid=metrics.mse_pid, rmse_pid=metrics.rmse_pid, mae_pid=metrics.mae_pid, r2_pid=metrics.r2_pid
+        )
         self.db.add(new_metrics)
         self.db.commit()
 
     def create_bulk(self, results: List[BacktestResult]) -> int:
         try:
-            self.db.add_all(results)
+            self.db.bulk_save_objects(results)
             self.db.commit()
             return len(results)
         except Exception as e:

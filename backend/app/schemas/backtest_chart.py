@@ -17,4 +17,6 @@ class BacktestChart(BaseModel):
     prediction_p90_rounded: List[Optional[int]]
     actual_rounded: List[Optional[int]]
     diff_rounded_instances: List[Optional[float]]
+    prediction_pid: List[float] = []
+    prediction_pid_rounded: List[float] = []
     metrics: Optional[BacktestMetrics] = None

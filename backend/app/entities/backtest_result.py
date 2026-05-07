@@ -22,3 +22,5 @@ class BacktestResult(Base):
     prediction_p90_rounded: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     actual_rounded: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     diff_rounded_instances: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    prediction_pid: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    prediction_pid_rounded: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
