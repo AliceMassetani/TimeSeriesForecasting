@@ -16,3 +16,15 @@ class Metrics(Base):
     rmse_pid = Column(Float, nullable=True)
     mae_pid = Column(Float, nullable=True)
     r2_pid = Column(Float, nullable=True)
+
+    # Nuove metriche di business (Originale)
+    under_count = Column(Integer, nullable=True, default=0)
+    over_count = Column(Integer, nullable=True, default=0)
+    under_sum = Column(Float, nullable=True, default=0.0)
+    over_sum = Column(Float, nullable=True, default=0.0)
+
+    # Nuove metriche di business (PID)
+    under_count_pid = Column(Integer, nullable=True, default=0)
+    over_count_pid = Column(Integer, nullable=True, default=0)
+    under_sum_pid = Column(Float, nullable=True, default=0.0)
+    over_sum_pid = Column(Float, nullable=True, default=0.0)

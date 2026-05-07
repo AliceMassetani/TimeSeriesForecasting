@@ -10,3 +10,15 @@ class BacktestMetrics(BaseModel):
     rmse_pid: Optional[float] = None
     mae_pid: Optional[float] = None
     r2_pid: Optional[float] = None
+    
+    # Nuove metriche di business (Originale)
+    under_count: Optional[int] = 0
+    over_count: Optional[int] = 0
+    under_sum: Optional[float] = 0.0
+    over_sum: Optional[float] = 0.0
+
+    # Nuove metriche di business (PID)
+    under_count_pid: Optional[int] = 0
+    over_count_pid: Optional[int] = 0
+    under_sum_pid: Optional[float] = 0.0
+    over_sum_pid: Optional[float] = 0.0

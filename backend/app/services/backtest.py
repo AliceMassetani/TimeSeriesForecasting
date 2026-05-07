@@ -120,26 +120,44 @@ class BacktestService:
         # Creazione di una serie temporale per il PID per calcolare le metriche
         pid_series = TimeSeries.from_times_and_values(forecast_p50.time_index, pid_predictions)
 
-        metrics = BacktestMetrics(
-            rmse=rmse(series, forecast_p50), 
-            mse=mse(series, forecast_p50), 
-            mae=mae(series, forecast_p50), 
-            r2=r2_score(series, forecast_p50),
-            rmse_pid=rmse(series, pid_series),
-            mse_pid=mse(series, pid_series),
-            mae_pid=mae(series, pid_series),
-            r2_pid=r2_score(series, pid_series)
-        )
+        # Inizializzazione contatori per le nuove metriche
+        under_count, over_count = 0, 0
+        under_sum, over_sum = 0.0, 0.0
+        under_count_pid, over_count_pid = 0, 0
+        under_sum_pid, over_sum_pid = 0.0, 0.0
 
         results = []
         for i, (ts, row_p50) in enumerate(df_p50.iterrows()):
             real_val = df_clean.loc[df_clean['TimeStamp'] == ts, target]
             if real_val.empty: continue
-            real = real_val.values[0]
-            pred_p50 = row_p50.iloc[0]
-            pred_p10 = df_p10.loc[ts].iloc[0]
-            pred_p90 = df_p90.loc[ts].iloc[0]
-            pred_pid = pid_predictions[i]
+            real = float(real_val.values[0])
+            pred_p50 = float(row_p50.iloc[0])
+            pred_p10 = float(df_p10.loc[ts].iloc[0])
+            pred_p90 = float(df_p90.loc[ts].iloc[0])
+            pred_pid = float(pid_predictions[i])
+
+            # Calcolo metriche per modello originale (P50) usando valori arrotondati (istanze reali)
+            real_rounded = int(round(real))
+            pred_p50_rounded = int(round(pred_p50))
+            diff_raw_rounded = pred_p50_rounded - real_rounded
+            
+            if diff_raw_rounded < 0:
+                under_count += 1
+                under_sum += abs(diff_raw_rounded)
+            elif diff_raw_rounded > 0:
+                over_count += 1
+                over_sum += diff_raw_rounded
+
+            # Calcolo metriche per PID usando valori arrotondati
+            pred_pid_rounded_val = int(round(pred_pid)) if pred_pid is not None and np.isfinite(pred_pid) else 0
+            diff_pid_rounded = pred_pid_rounded_val - real_rounded
+            
+            if diff_pid_rounded < 0:
+                under_count_pid += 1
+                under_sum_pid += abs(diff_pid_rounded)
+            elif diff_pid_rounded > 0:
+                over_count_pid += 1
+                over_sum_pid += diff_pid_rounded
 
             # Protezione finale contro valori non finiti (NaN/Inf) prima del cast a int
             pred_pid_rounded = None
@@ -161,6 +179,25 @@ class BacktestService:
                 prediction_pid=pred_pid,
                 prediction_pid_rounded=pred_pid_rounded
             ))
+        metrics = BacktestMetrics(
+            rmse=rmse(series, forecast_p50), 
+            mse=mse(series, forecast_p50), 
+            mae=mae(series, forecast_p50), 
+            r2=r2_score(series, forecast_p50),
+            rmse_pid=rmse(series, pid_series),
+            mse_pid=mse(series, pid_series),
+            mae_pid=mae(series, pid_series),
+            r2_pid=r2_score(series, pid_series),
+            under_count=under_count,
+            over_count=over_count,
+            under_sum=under_sum,
+            over_sum=over_sum,
+            under_count_pid=under_count_pid,
+            over_count_pid=over_count_pid,
+            under_sum_pid=under_sum_pid,
+            over_sum_pid=over_sum_pid
+        )
+
         return {"results": results, "metrics": metrics}
 
     def get_backtest_chart_data(self, repository: IBacktestRepository, limit: Optional[int] = None, start_date: Optional[datetime] = None, end_date: Optional[datetime] = None) -> BacktestChart:

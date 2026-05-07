@@ -13,6 +13,16 @@ interface BacktestMetrics {
   mse_pid?: number;
   mae_pid?: number;
   r2_pid?: number;
+
+  // Nuove metriche
+  under_count?: number;
+  over_count?: number;
+  under_sum?: number;
+  over_sum?: number;
+  under_count_pid?: number;
+  over_count_pid?: number;
+  under_sum_pid?: number;
+  over_sum_pid?: number;
 }
 
 //Risposta di esecuzione backtest
@@ -232,6 +242,25 @@ interface BacktestChartData {
           </div>
         </div>
 
+        <div class="metrics-grid mt-1">
+          <div class="metrics-card border-danger">
+            <span class="label">Sotto-dimensionamento (Volte)</span>
+            <span class="value">{{ metrics()?.under_count }}</span>
+          </div>
+          <div class="metrics-card border-danger">
+            <span class="label">Sotto-dimensionamento (Totale)</span>
+            <span class="value">{{ metrics()?.under_sum | number: '1.0-0' }}</span>
+          </div>
+          <div class="metrics-card">
+            <span class="label">Sovra-dimensionamento (Volte)</span>
+            <span class="value">{{ metrics()?.over_count }}</span>
+          </div>
+          <div class="metrics-card">
+            <span class="label">Sovra-dimensionamento (Totale)</span>
+            <span class="value">{{ metrics()?.over_sum | number: '1.0-0' }}</span>
+          </div>
+        </div>
+
         @if (chartData?.prediction_pid_rounded) {
           <div class="divider"></div>
 
@@ -290,6 +319,45 @@ interface BacktestChartData {
                 <span class="value">{{ metrics()?.r2_pid | number: '1.4-4' }}</span>
                 <span class="comparison-badge" [class.improvement]="(metrics()?.r2_pid || 0) > (metrics()?.r2 || 0)" [class.worsening]="(metrics()?.r2_pid || 0) < (metrics()?.r2 || 0)">
                   {{ calculateVariation(metrics()?.r2_pid, metrics()?.r2) }}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <div class="metrics-grid mt-1">
+            <div class="metrics-card pid-accent">
+              <span class="label">Sotto-dim. (PID)</span>
+              <div class="value-row">
+                <span class="value">{{ metrics()?.under_count_pid }}</span>
+                <span class="comparison-badge" [class.improvement]="(metrics()?.under_count_pid || 0) < (metrics()?.under_count || 0)" [class.worsening]="(metrics()?.under_count_pid || 0) > (metrics()?.under_count || 0)">
+                  {{ calculateVariation(metrics()?.under_count_pid, metrics()?.under_count) }}
+                </span>
+              </div>
+            </div>
+            <div class="metrics-card pid-accent">
+              <span class="label">Sotto-dim. Totale (PID)</span>
+              <div class="value-row">
+                <span class="value">{{ metrics()?.under_sum_pid | number: '1.0-0' }}</span>
+                <span class="comparison-badge" [class.improvement]="(metrics()?.under_sum_pid || 0) < (metrics()?.under_sum || 0)" [class.worsening]="(metrics()?.under_sum_pid || 0) > (metrics()?.under_sum || 0)">
+                  {{ calculateVariation(metrics()?.under_sum_pid, metrics()?.under_sum) }}
+                </span>
+              </div>
+            </div>
+            <div class="metrics-card pid-accent">
+              <span class="label">Sovra-dim. (PID)</span>
+              <div class="value-row">
+                <span class="value">{{ metrics()?.over_count_pid }}</span>
+                <span class="comparison-badge" [class.improvement]="(metrics()?.over_count_pid || 0) < (metrics()?.over_count || 0)" [class.worsening]="(metrics()?.over_count_pid || 0) > (metrics()?.over_count || 0)">
+                  {{ calculateVariation(metrics()?.over_count_pid, metrics()?.over_count) }}
+                </span>
+              </div>
+            </div>
+            <div class="metrics-card pid-accent">
+              <span class="label">Sovra-dim. Totale (PID)</span>
+              <div class="value-row">
+                <span class="value">{{ metrics()?.over_sum_pid | number: '1.0-0' }}</span>
+                <span class="comparison-badge" [class.improvement]="(metrics()?.over_sum_pid || 0) < (metrics()?.over_sum || 0)" [class.worsening]="(metrics()?.over_sum_pid || 0) > (metrics()?.over_sum || 0)">
+                  {{ calculateVariation(metrics()?.over_sum_pid, metrics()?.over_sum) }}
                 </span>
               </div>
             </div>
@@ -537,7 +605,7 @@ export class BacktestComponent implements OnInit {
       const ctxPid = canvasPid.getContext('2d');
       if (ctxPid) {
         const diffPid = displayData.prediction_pid_rounded.map((val, i) => val - (displayData.actual_rounded[i] || 0));
-        
+
         this.pidChart = new Chart(ctxPid, {
           type: 'line',
           data: {

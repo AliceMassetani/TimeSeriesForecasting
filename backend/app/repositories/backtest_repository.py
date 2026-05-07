@@ -51,7 +51,16 @@ class BacktestRepository(IBacktestRepository):
             mse_pid=getattr(m, 'mse_pid', None), 
             rmse_pid=getattr(m, 'rmse_pid', None), 
             mae_pid=getattr(m, 'mae_pid', None), 
-            r2_pid=getattr(m, 'r2_pid', None)
+            r2_pid=getattr(m, 'r2_pid', None),
+            # Nuove metriche recuperate dal DB
+            under_count=getattr(m, 'under_count', 0),
+            over_count=getattr(m, 'over_count', 0),
+            under_sum=getattr(m, 'under_sum', 0.0),
+            over_sum=getattr(m, 'over_sum', 0.0),
+            under_count_pid=getattr(m, 'under_count_pid', 0),
+            over_count_pid=getattr(m, 'over_count_pid', 0),
+            under_sum_pid=getattr(m, 'under_sum_pid', 0.0),
+            over_sum_pid=getattr(m, 'over_sum_pid', 0.0)
         ) if m else None
 
         return BacktestChart(
@@ -76,7 +85,16 @@ class BacktestRepository(IBacktestRepository):
         new_metrics = Metrics(
             id=1, 
             mse=metrics.mse, rmse=metrics.rmse, mae=metrics.mae, r2=metrics.r2,
-            mse_pid=metrics.mse_pid, rmse_pid=metrics.rmse_pid, mae_pid=metrics.mae_pid, r2_pid=metrics.r2_pid
+            mse_pid=metrics.mse_pid, rmse_pid=metrics.rmse_pid, mae_pid=metrics.mae_pid, r2_pid=metrics.r2_pid,
+            # Salvataggio nuove metriche
+            under_count=metrics.under_count,
+            over_count=metrics.over_count,
+            under_sum=metrics.under_sum,
+            over_sum=metrics.over_sum,
+            under_count_pid=metrics.under_count_pid,
+            over_count_pid=metrics.over_count_pid,
+            under_sum_pid=metrics.under_sum_pid,
+            over_sum_pid=metrics.over_sum_pid
         )
         self.db.add(new_metrics)
         self.db.commit()
