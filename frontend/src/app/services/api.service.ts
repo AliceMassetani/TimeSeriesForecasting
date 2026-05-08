@@ -105,4 +105,11 @@ export class ApiService {
   rollbackModel(): Observable<any> {
     return this.http.post(`${this.apiUrl}/train/rollback`, {});
   }
+  /**
+   * Esporta i risultati del backtest in formato CSV
+   */
+  exportBacktestCsv(mode: string = 'all'): Observable<Blob> {
+    let params = new HttpParams().set('mode', mode);
+    return this.http.get(`${this.apiUrl}/backtest/export-csv`, { params, responseType: 'blob' });
+  }
 }

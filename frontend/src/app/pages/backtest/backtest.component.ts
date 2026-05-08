@@ -152,11 +152,21 @@ interface BacktestChartData {
 
         <!-- RISULTATO BACKTEST (SUCCESSO) -->
         @if (backtestResult()) {
-          <div class="alert-box success" style="margin-top: 1.5rem;">
-            <span class="alert-icon">✓</span>
-            <div class="alert-content">
-              <strong>Backtest Completato!</strong>
-              <p>{{ backtestResult()?.message }}</p>
+          <div class="alert-box success" style="margin-top: 1.5rem; display: flex; justify-content: space-between; align-items: center; padding: 1rem 1.5rem;">
+            <div style="display: flex; align-items: center; gap: 1rem;">
+              <span class="alert-icon" style="margin: 0; position: static; font-size: 1.2rem;">✓</span>
+              <div class="alert-content">
+                <strong style="margin: 0;">Backtest Completato!</strong>
+                <p style="margin: 0; opacity: 0.8;">{{ backtestResult()?.message }}</p>
+              </div>
+            </div>
+            <div class="flex-row flex-gap-1">
+              <button class="secondary-btn" (click)="exportToCsv('original')" style="background: rgba(153, 102, 255, 0.1); border: 1px solid var(--primary-blue); color: #fff; font-size: 0.75rem;">
+                Esporta Originale
+              </button>
+              <button class="secondary-btn" (click)="exportToCsv('pid')" style="background: rgba(45, 212, 191, 0.1); border: 1px solid #2dd4bf; color: #fff; font-size: 0.75rem;">
+                Esporta PID
+              </button>
             </div>
           </div>
         }
@@ -270,7 +280,7 @@ interface BacktestChartData {
             <span class="value">{{ metrics()?.under_count }}</span>
           </div>
           <div class="metrics-card border-danger">
-            <span class="label">Sotto-dimensionamento (Totale)</span>
+            <span class="label">Sotto-dimensionamento (Numero di instanze)</span>
             <span class="value">{{ metrics()?.under_sum | number: '1.0-0' }}</span>
           </div>
           <div class="metrics-card">
@@ -278,7 +288,7 @@ interface BacktestChartData {
             <span class="value">{{ metrics()?.over_count }}</span>
           </div>
           <div class="metrics-card">
-            <span class="label">Sovra-dimensionamento (Totale)</span>
+            <span class="label">Sovra-dimensionamento (Numero di instanze)</span>
             <span class="value">{{ metrics()?.over_sum | number: '1.0-0' }}</span>
           </div>
         </div>
@@ -348,7 +358,7 @@ interface BacktestChartData {
 
           <div class="metrics-grid mt-1">
             <div class="metrics-card pid-accent">
-              <span class="label">Sotto-dim. (PID)</span>
+              <span class="label">Sotto-dimensionamento (volte) (PID)</span>
               <div class="value-row">
                 <span class="value">{{ metrics()?.under_count_pid }}</span>
                 <span class="comparison-badge" [class.improvement]="(metrics()?.under_count_pid || 0) < (metrics()?.under_count || 0)" [class.worsening]="(metrics()?.under_count_pid || 0) > (metrics()?.under_count || 0)">
@@ -357,7 +367,7 @@ interface BacktestChartData {
               </div>
             </div>
             <div class="metrics-card pid-accent">
-              <span class="label">Sotto-dim. Totale (PID)</span>
+              <span class="label">Sotto-dimensioamento (Numero di instanze) (PID)</span>
               <div class="value-row">
                 <span class="value">{{ metrics()?.under_sum_pid | number: '1.0-0' }}</span>
                 <span class="comparison-badge" [class.improvement]="(metrics()?.under_sum_pid || 0) < (metrics()?.under_sum || 0)" [class.worsening]="(metrics()?.under_sum_pid || 0) > (metrics()?.under_sum || 0)">
@@ -366,7 +376,7 @@ interface BacktestChartData {
               </div>
             </div>
             <div class="metrics-card pid-accent">
-              <span class="label">Sovra-dim. (PID)</span>
+              <span class="label">Sovra-dimensionamento (volte) (PID)</span>
               <div class="value-row">
                 <span class="value">{{ metrics()?.over_count_pid }}</span>
                 <span class="comparison-badge" [class.improvement]="(metrics()?.over_count_pid || 0) < (metrics()?.over_count || 0)" [class.worsening]="(metrics()?.over_count_pid || 0) > (metrics()?.over_count || 0)">
@@ -375,7 +385,7 @@ interface BacktestChartData {
               </div>
             </div>
             <div class="metrics-card pid-accent">
-              <span class="label">Sovra-dim. Totale (PID)</span>
+              <span class="label">Sovra-dimensionamento (Numero di instanze) (PID)</span>
               <div class="value-row">
                 <span class="value">{{ metrics()?.over_sum_pid | number: '1.0-0' }}</span>
                 <span class="comparison-badge" [class.improvement]="(metrics()?.over_sum_pid || 0) < (metrics()?.over_sum || 0)" [class.worsening]="(metrics()?.over_sum_pid || 0) > (metrics()?.over_sum || 0)">
@@ -528,6 +538,24 @@ export class BacktestComponent implements OnInit {
         this.isBacktesting.set(false);
         const detail = err.error?.detail || err.message || 'Errore durante l\'esecuzione del backtest.';
         this.backtestError.set(detail);
+      }
+    });
+  }
+
+  exportToCsv(mode: string = 'all') {
+    this.apiService.exportBacktestCsv(mode).subscribe({
+      next: (blob: Blob) => {
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `backtest_${mode}_${new Date().getTime()}.csv`;
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(url);
+        document.body.removeChild(a);
+      },
+      error: (err) => {
+        console.error('Errore durante l\'esportazione:', err);
       }
     });
   }

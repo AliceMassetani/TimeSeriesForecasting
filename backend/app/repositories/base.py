@@ -18,6 +18,10 @@ class IBacktestRepository(ABC):
         pass
 
     @abstractmethod
+    def get_all(self) -> List[BacktestResult]:
+        pass
+
+    @abstractmethod
     def delete_all(self) -> int:
         pass
 

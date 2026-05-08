@@ -108,6 +108,9 @@ class BacktestRepository(IBacktestRepository):
             self.db.rollback()
             raise e
 
+    def get_all(self) -> List[BacktestResult]:
+        return self.db.query(BacktestResult).order_by(BacktestResult.timestamp).all()
+
     def delete_all(self) -> int:
         try:
             self.db.query(Metrics).delete()

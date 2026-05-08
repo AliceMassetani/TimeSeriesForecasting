@@ -1,4 +1,6 @@
 from fastapi import APIRouter, UploadFile, File, Depends, HTTPException, Form
+from fastapi.responses import StreamingResponse
+import csv
 from sqlalchemy.orm import Session
 import pandas as pd
 import io
@@ -96,3 +98,45 @@ async def get_backtest_history(
         raise HTTPException(status_code=404, detail="Nessun dato trovato")
 
     return chart_data
+
+@router.get("/export-csv")
+async def export_backtest_csv(mode: str = "all", db: Session = Depends(get_db)):
+    """
+    Esporta i risultati del backtest in formato CSV.
+    Mode: 'original', 'pid', 'all'
+    """
+    repo = BacktestRepository(db)
+    results = repo.get_all()
+    
+    if not results:
+        raise HTTPException(status_code=404, detail="Nessun dato di backtest trovato.")
+
+    output = io.StringIO()
+    writer = csv.writer(output)
+    
+    # Header dinamico
+    header = ["Timestamp", "Actual_Value"]
+    if mode == "original" or mode == "all":
+        header.extend(["Original_Prediction", "Diff_Original"])
+    if mode == "pid" or mode == "all":
+        header.extend(["PID_Prediction", "Diff_PID"])
+    
+    writer.writerow(header)
+    
+    # Dati
+    for r in results:
+        row = [r.timestamp, r.actual_value]
+        if mode == "original" or mode == "all":
+            row.extend([r.prediction, (r.prediction - r.actual_value) if r.actual_value is not None else 0])
+        if mode == "pid" or mode == "all":
+            row.extend([r.prediction_pid, (r.prediction_pid - r.actual_value) if r.actual_value is not None and r.prediction_pid is not None else 0])
+        writer.writerow(row)
+    
+    output.seek(0)
+    
+    filename = f"backtest_{mode}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+    return StreamingResponse(
+        iter([output.getvalue()]),
+        media_type="text/csv",
+        headers={"Content-Disposition": f"attachment; filename={filename}"}
+    )
