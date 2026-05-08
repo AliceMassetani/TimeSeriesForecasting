@@ -29,7 +29,9 @@ class NonLinearPID:
         self.prev_error = 0.0
 
     def update(self, setpoint: float, current_value: float, dt: float = 1.0, min_val: float = 0.0, max_val: float = 2000.0) -> float:
-        error = setpoint - current_value
+        # Errore per autoscaler: quanto la realtà (PV) supera la previsione (Setpoint)
+        # Se realtà > forecast -> errore positivo -> il PID aggiunge capacità
+        error = current_value - setpoint
         
         # Penalizzazione asimmetrica (rallenta lo scale-down se < 1)
         if error < 0:

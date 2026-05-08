@@ -128,30 +128,43 @@ class BacktestService:
         forecast_setpoint = forecast.quantile(quantile)
         df_setpoint = forecast_setpoint.to_dataframe()
         
-        # Inizializziamo il feedback con il primo valore reale disponibile
+        # Inizializziamo il feedback e il forecast precedente
         first_ts = df_p50.index[0]
         first_real_val = df_clean.loc[df_clean['TimeStamp'] == first_ts, target]
         
-        # Se non c'è il dato reale, usiamo il primo valore del setpoint scelto (es. P90) 
-        # per evitare che la differenza P90-P50 venga vista come un errore reale al primo step
-        current_feedback_val = float(first_real_val.values[0]) if not first_real_val.empty else float(df_setpoint.iloc[0].iloc[0])
-        
+        # Valore reale iniziale
+        current_real_val = float(first_real_val.values[0]) if not first_real_val.empty else float(df_setpoint.iloc[0].iloc[0])
+        # Forecast precedente (inizializzato al primo valore per errore zero al colstart)
+        prev_forecast_val = float(df_setpoint.iloc[0].iloc[0])
+
         for (ts, row_p50), (_, row_sp) in zip(df_p50.iterrows(), df_setpoint.iterrows()):
             pred_sp = float(row_sp.iloc[0])
             
-            # 1. Update PID: 
-            # Setpoint = Cosa prevediamo di servire
-            # Current_value = Cosa abbiamo servito realmente un attimo prima (Feedback)
-            current_pid_val = pid.update(pred_sp, current_feedback_val, min_val=0.0, max_val=safety_limit)
+            # 1. Calcoliamo il BIAS del modello al passo precedente
+            # Errore = Quanto la realtà si è scostata dalla previsione che avevamo fatto per quel momento
+            model_error = current_real_val - prev_forecast_val
+            
+            # 2. Il PID lavora sull'errore del modello (Setpoint dell'errore è 0)
+            # Usiamo update_correction o una versione che restituisce solo il delta
+            # Per semplicità usiamo il nostro update ma con setpoint 0 e current_value = model_error
+            # Ma dobbiamo stare attenti: il nostro update restituisce setpoint + correction.
+            # Vogliamo solo la correzione.
+            
+            # Usiamo una logica pulita: la correzione è ciò che il PID decide di aggiungere
+            # per compensare l'errore del modello.
+            pid_correction = pid.update(0, model_error) - 0 # Ora il segno è concorde
+            
+            current_pid_val = pred_sp + pid_correction
+            
+            # Clip finale per sicurezza
+            current_pid_val = float(np.clip(current_pid_val, 0.0, safety_limit))
             pid_predictions.append(current_pid_val)
             
-            # 2. Prepariamo il feedback per il prossimo passo (il valore reale a questo timestamp)
+            # 3. Prepariamo i valori per il prossimo passo
+            prev_forecast_val = pred_sp # Il forecast di adesso sarà il 'prev' al prossimo giro
             real_val_now = df_clean.loc[df_clean['TimeStamp'] == ts, target]
             if not real_val_now.empty:    
-                current_feedback_val = float(real_val_now.values[0])
-            else:
-                # Fallback se manca il dato reale (usiamo la nostra previsione precedente)
-                current_feedback_val = current_pid_val
+                current_real_val = float(real_val_now.values[0])
 
         # Creazione di una serie temporale per il PID per calcolare le metriche
         pid_series = TimeSeries.from_times_and_values(forecast_p50.time_index, pid_predictions)
