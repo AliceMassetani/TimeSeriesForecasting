@@ -35,6 +35,8 @@ async def run_backtest_upload(
     pid_exp: Optional[float] = Form(None),
     pid_scale_down: Optional[float] = Form(None),
     pid_quantile: Optional[float] = Form(None),
+    pid_max_derivative: Optional[float] = Form(None),
+    pid_acceleration_factor: Optional[float] = Form(None),
     db: Session = Depends(get_db)
 ):
     """
@@ -55,7 +57,9 @@ async def run_backtest_upload(
             df, TARGET, repo,
             pid_kp=pid_kp, pid_ki=pid_ki, pid_kd=pid_kd,
             pid_exp=pid_exp, pid_scale_down=pid_scale_down,
-            pid_quantile=pid_quantile
+            pid_quantile=pid_quantile,
+            pid_max_derivative=pid_max_derivative,
+            pid_acceleration_factor=pid_acceleration_factor
         )
         return {
             "message": "Backtest completato con successo",

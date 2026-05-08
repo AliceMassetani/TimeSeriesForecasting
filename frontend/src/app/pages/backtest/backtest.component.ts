@@ -118,6 +118,28 @@ interface BacktestChartData {
               <label>Scale Down Penalty</label>
               <input type="number" [(ngModel)]="pidScaleDown" step="0.1" min="0" max="1" placeholder="0.6 (default)">
             </div>
+            <div class="filter-group">
+              <label class="has-tooltip">
+                Max Derivative (Cap) <span class="info-icon">i</span>
+                <span class="tooltip-text">Se vuoto, il sistema analizza la volatilità storica (P99 delle variazioni) per impostare un tetto automatico.</span>
+              </label>
+              <input type="number" [(ngModel)]="pidMaxDerivative" step="10" min="1" placeholder="Auto-calc">
+            </div>
+            <div class="filter-group">
+              <label class="has-tooltip">
+                Acceleration Factor <span class="info-icon">i</span>
+                <span class="tooltip-text">Moltiplica la spinta del PID durante i picchi improvvisi. Default 1.2.</span>
+              </label>
+              <input type="number" [(ngModel)]="pidAccelerationFactor" step="0.1" min="1" max="5" placeholder="1.2 (default)">
+            </div>
+          </div>
+          <div class="mt-1" style="background: rgba(96, 165, 250, 0.05); border-left: 3px solid var(--primary-blue); border-radius: 4px; margin-left: 1.5rem; padding: 0.75rem 1.2rem;">
+            <p style="font-size: 0.75rem; color: var(--text-muted); margin: 0;">
+              <strong style="color: var(--primary-blue);"> Logica Adattiva:</strong> 
+              Se i parametri "Max Derivative" e "Safety Limit" sono vuoti, il sistema analizza il dataset caricato. 
+              Viene calcolata la <strong>volatilità (P99 delle variazioni)</strong> per impostare un tetto di sicurezza che permetta reazioni rapide 
+              ma protegga da errori o rumore nei dati.
+            </p>
           </div>
         </details>
 
@@ -366,7 +388,62 @@ interface BacktestChartData {
       }
     </div>
   `,
-  styles: []
+  styles: [`
+    .filter-group {
+      display: flex;
+      flex-direction: column;
+      gap: 0.4rem;
+      min-width: 140px;
+    }
+    .has-tooltip {
+      position: relative;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      cursor: help;
+    }
+    .info-icon {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 14px;
+      height: 14px;
+      border: 1px solid var(--primary-blue);
+      border-radius: 50%;
+      font-size: 0.65rem;
+      font-weight: bold;
+      color: var(--primary-blue);
+      font-style: italic;
+    }
+    .tooltip-text {
+      visibility: hidden;
+      width: 200px;
+      background-color: #1a1f2e;
+      color: #fff;
+      text-align: center;
+      border-radius: 6px;
+      padding: 8px;
+      position: absolute;
+      z-index: 100;
+      bottom: 125%;
+      left: 0;
+      opacity: 0;
+      transition: opacity 0.3s;
+      font-size: 0.7rem;
+      text-transform: none;
+      letter-spacing: normal;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+      border: 1px solid rgba(255,255,255,0.1);
+      pointer-events: none;
+    }
+    .has-tooltip:hover .tooltip-text {
+      visibility: visible;
+      opacity: 1;
+    }
+    .filter-group input, .filter-group select {
+      height: 38px;
+    }
+  `]
 })
 export class BacktestComponent implements OnInit {
   selectedFile: File | null = null;
@@ -380,6 +457,8 @@ export class BacktestComponent implements OnInit {
   pidKd?: number;
   pidExp?: number;
   pidScaleDown?: number;
+  pidMaxDerivative?: number;
+  pidAccelerationFactor?: number;
   pidQuantile: number = 0.9;
 
   isBacktesting = signal(false);
@@ -433,7 +512,9 @@ export class BacktestComponent implements OnInit {
     this.apiService.runBacktest(this.selectedFile, {
       kp: this.pidKp, ki: this.pidKi, kd: this.pidKd,
       exp: this.pidExp, scale_down: this.pidScaleDown,
-      quantile: this.pidQuantile
+      quantile: this.pidQuantile,
+      max_derivative: this.pidMaxDerivative,
+      acceleration_factor: this.pidAccelerationFactor
     }).subscribe({
       next: (response: BacktestResponse) => {
         console.log('--- BACKTEST COMPLETATO ---', response);

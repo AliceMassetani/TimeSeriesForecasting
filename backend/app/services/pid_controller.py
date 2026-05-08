@@ -13,13 +13,17 @@ class NonLinearPID:
         ki: float = 0.1, 
         kd: float = 0.2, 
         derivative_exp: float = 1.0, 
-        scale_down_penalty: float = 1.0
+        scale_down_penalty: float = 1.0,
+        max_derivative: float = 100.0,
+        acceleration_factor: float = 1.2
     ):
         self.kp = kp
         self.ki = ki
         self.kd = kd
         self.derivative_exp = derivative_exp
         self.scale_down_penalty = scale_down_penalty
+        self.max_derivative = max_derivative
+        self.acceleration_factor = acceleration_factor
         
         self.integral = 0.0
         self.prev_error = 0.0
@@ -36,18 +40,29 @@ class NonLinearPID:
         # Proporzionale
         p_term = self.kp * effective_error
         
-        # Integrale
+        # Integrale con Anti-windup (Clamping)
         self.integral += effective_error * dt
+        
+        # Limitiamo l'integrale affinché non superi il range totale di manovra
+        # Questo evita che il termine I accumuli drift infiniti in saturazione
+        i_limit = (max_val - min_val)
+        self.integral = float(np.clip(self.integral, -i_limit, i_limit))
+        
         i_term = self.ki * self.integral
         
-        # Derivata non lineare (potenziata sui picchi in salita)
+        # Derivata non lineare
+        # L'esponente (derivative_exp) trasforma la risposta:
+        # - exp = 1: risposta lineare standard
+        # - exp > 1: sopprime il rumore (piccole derivate) e amplifica i picchi (grandi derivate)
         derivative = (effective_error - self.prev_error) / dt
+        
         if derivative > 0:
-            # Protezione overflow: limitiamo la derivata prima dell'elevamento a potenza
-            safe_derivative = min(derivative, 100.0) # Tetto massimo di variazione
-            nl_derivative = safe_derivative ** (self.derivative_exp * 1.2)
+            # In salita applichiamo l'acceleration_factor per una reattività massima
+            safe_derivative = min(derivative, self.max_derivative) 
+            nl_derivative = safe_derivative ** (self.derivative_exp * self.acceleration_factor)
         else:
-            safe_derivative = max(derivative, -100.0)
+            # In discesa usiamo l'esponente standard per uno scale-down più controllato
+            safe_derivative = max(derivative, -self.max_derivative)
             nl_derivative = np.sign(safe_derivative) * (np.abs(safe_derivative) ** self.derivative_exp)
             
         d_term = self.kd * nl_derivative
@@ -59,9 +74,8 @@ class NonLinearPID:
         self.prev_error = effective_error
         
         # Suggerimento basato sul setpoint (Forecast) + correzione
-        # Questo permette di "anticipare" il forecast se il trend è positivo
         suggested_value = setpoint + correction
-        return float(np.clip(suggested_value, min_val, max_val)) # Assicura che il risultato finale non sia mai negativo e non superi mai un tetto massimo di sicurezza
+        return float(np.clip(suggested_value, min_val, max_val))
     def reset(self):
         self.integral = 0.0
         self.prev_error = 0.0

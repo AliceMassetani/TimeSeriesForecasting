@@ -31,18 +31,24 @@ export class ApiService {
   }
 
 
-  runBacktest(file: File, pidParams?: { kp?: number, ki?: number, kd?: number, exp?: number, scale_down?: number, quantile?: number }): Observable<any> {
+  runBacktest(file: File, pidParams?: { kp?: number, ki?: number, kd?: number, exp?: number, scale_down?: number, quantile?: number, max_derivative?: number, acceleration_factor?: number }): Observable<any> {
     const formData = new FormData();
-    formData.append('file', file);
+    formData.append('file', file); 
     if (pidParams) {
-      if (pidParams.kp !== undefined) formData.append('pid_kp', String(pidParams.kp));
-      if (pidParams.ki !== undefined) formData.append('pid_ki', String(pidParams.ki));
-      if (pidParams.kd !== undefined) formData.append('pid_kd', String(pidParams.kd));
-      if (pidParams.exp !== undefined) formData.append('pid_exp', String(pidParams.exp));
-      if (pidParams.scale_down !== undefined) formData.append('pid_scale_down', String(pidParams.scale_down));
-      if (pidParams.quantile !== undefined) formData.append('pid_quantile', String(pidParams.quantile));
+      if (this.isValidNum(pidParams.kp)) formData.append('pid_kp', String(pidParams.kp));
+      if (this.isValidNum(pidParams.ki)) formData.append('pid_ki', String(pidParams.ki));
+      if (this.isValidNum(pidParams.kd)) formData.append('pid_kd', String(pidParams.kd));
+      if (this.isValidNum(pidParams.exp)) formData.append('pid_exp', String(pidParams.exp));
+      if (this.isValidNum(pidParams.scale_down)) formData.append('pid_scale_down', String(pidParams.scale_down));
+      if (this.isValidNum(pidParams.quantile)) formData.append('pid_quantile', String(pidParams.quantile));
+      if (this.isValidNum(pidParams.max_derivative)) formData.append('pid_max_derivative', String(pidParams.max_derivative));
+      if (this.isValidNum(pidParams.acceleration_factor)) formData.append('pid_acceleration_factor', String(pidParams.acceleration_factor));
     }
     return this.http.post(`${this.apiUrl}/backtest/run`, formData);
+  }
+
+  private isValidNum(val: any): boolean {
+    return val !== null && val !== undefined && val !== '' && !isNaN(Number(val));
   }
 
   /**

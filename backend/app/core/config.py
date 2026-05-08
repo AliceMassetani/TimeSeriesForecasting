@@ -16,6 +16,13 @@ class Settings(BaseSettings):
     PID_KD: float = 0.05
     PID_DERIVATIVE_EXP: float = 1.0
     PID_SCALE_DOWN_PENALTY: float = 0.6
+    PID_MAX_DERIVATIVE: float = 100.0
+    PID_ACCELERATION_FACTOR: float = 1.2
+    
+    # Euristiche per il calcolo adattivo
+    PID_VOLATILITY_QUANTILE: float = 0.99
+    PID_VOLATILITY_MULT: float = 5.0
+    PID_SAFETY_MULT: float = 1.5
 
     # Configurazione Pydantic v2
     model_config = SettingsConfigDict(
