@@ -22,6 +22,7 @@ from ..repositories.base import IBacktestRepository
 from typing import List, Optional
 from datetime import datetime
 from .pid_controller import NonLinearPID
+from .kalman_filter import KalmanFilter
 from ..core.config import settings
 
 CHAMPION_PATH = os.path.join("app", "ml_models", "tsmixer_champion.pt")
@@ -84,7 +85,7 @@ class BacktestService:
             last_points_only=True,
             verbose=False
         )
-        
+
         forecast_p50 = forecast.quantile(0.5)
         forecast_p90 = forecast.quantile(0.9)
         forecast_p10 = forecast.quantile(0.1)
@@ -93,7 +94,7 @@ class BacktestService:
         target_series = df[target]
         max_observed = float(target_series.max())
         volatility = float(target_series.diff().abs().quantile(settings.PID_VOLATILITY_QUANTILE)) # Variazione massima "normale"
-        
+
         # Heuristic: max_derivative dovrebbe permettere reazioni ai picchi ma non rumore infinito
         if pid_max_derivative is None:
             # Usiamo il moltiplicatore da config, o almeno il 10% del massimo per servizi molto piatti
@@ -114,8 +115,13 @@ class BacktestService:
             max_derivative=max_d,
             acceleration_factor=acc_f
         )
-        
+
+        # Kalman Filter separato (stima il bias ottimale)
+        kf = KalmanFilter()
+
         pid_predictions = []
+        kalman_predictions = []
+
         df_p50 = forecast_p50.to_dataframe()
         df_p90 = forecast_p90.to_dataframe()
         df_p10 = forecast_p10.to_dataframe()
@@ -127,68 +133,70 @@ class BacktestService:
         # Il setpoint è il forecast futuro, il feedback (PV) è il valore reale passato 
         forecast_setpoint = forecast.quantile(quantile)
         df_setpoint = forecast_setpoint.to_dataframe()
-        
+
         # Inizializziamo il feedback e il forecast precedente
         first_ts = df_p50.index[0]
         first_real_val = df_clean.loc[df_clean['TimeStamp'] == first_ts, target]
-        
+
         # Valore reale iniziale
         current_real_val = float(first_real_val.values[0]) if not first_real_val.empty else float(df_setpoint.iloc[0].iloc[0])
         # Forecast precedente (inizializzato al primo valore per errore zero al colstart)
         prev_forecast_val = float(df_setpoint.iloc[0].iloc[0])
 
-        # Inizializziamo il Kalman Filter (Versione Ottimizzata 2.0)
-        from .kalman_filter import KalmanFilter
-        kf = KalmanFilter() # Usa i nuovi default Q=0.1, R=0.01
-
         for (ts, row_p50), (_, row_sp) in zip(df_p50.iterrows(), df_setpoint.iterrows()):
             pred_sp = float(row_sp.iloc[0])
-            
-            # 1. Calcoliamo l'errore del modello al passo precedente
+
+            # 1. Calcoliamo il BIAS del modello al passo precedente
+            # Errore = Quanto la realtà si è scostata dalla previsione che avevamo fatto per quel momento
             model_error = current_real_val - prev_forecast_val
             
-            # 2. Il Filtro di Kalman stima il BIAS ottimale (con Safety Margin integrato)
-            estimated_bias = kf.update(model_error)
-            
-            # Applichiamo il bias stimato al forecast futuro
-            current_pid_val = pred_sp + estimated_bias
-            
-            # Clip finale per sicurezza
+            # --- PID PURO (NonLinearPID) ---
+            # Il PID lavora sull'errore del modello (Setpoint dell'errore è 0)
+            # pid.update(setpoint=0, current_value=model_error) restituisce 0 + correction
+            pid_correction = pid.update(0, model_error)
+            current_pid_val = pred_sp + pid_correction
             current_pid_val = float(np.clip(current_pid_val, 0.0, safety_limit))
             pid_predictions.append(current_pid_val)
-            
+
+            # --- KALMAN PURO (KalmanFilter stima il bias ottimale) ---
+            estimated_bias = kf.update(model_error)
+            current_kalman_val = pred_sp + estimated_bias
+            current_kalman_val = float(np.clip(current_kalman_val, 0.0, safety_limit))
+            kalman_predictions.append(current_kalman_val)
+
             # 3. Prepariamo i valori per il prossimo passo
             prev_forecast_val = pred_sp # Il forecast di adesso sarà il 'prev' al prossimo giro
             real_val_now = df_clean.loc[df_clean['TimeStamp'] == ts, target]
             if not real_val_now.empty:    
                 current_real_val = float(real_val_now.values[0])
 
-        # Creazione di una serie temporale per il PID per calcolare le metriche
+        # Creazione serie temporali per il calcolo delle metriche
         pid_series = TimeSeries.from_times_and_values(forecast_p50.time_index, pid_predictions)
+        kalman_series = TimeSeries.from_times_and_values(forecast_p50.time_index, kalman_predictions)
 
-        # Inizializzazione contatori per le nuove metriche
+        # Inizializzazione contatori per le metriche di business
         under_count, over_count = 0, 0
         under_sum, over_sum = 0.0, 0.0
         under_count_pid, over_count_pid = 0, 0
         under_sum_pid, over_sum_pid = 0.0, 0.0
+        under_count_kalman, over_count_kalman = 0, 0
+        under_sum_kalman, over_sum_kalman = 0.0, 0.0
 
         results = []
         for i, (ts, row_p50) in enumerate(df_p50.iterrows()):
             real_val = df_clean.loc[df_clean['TimeStamp'] == ts, target]
             if real_val.empty: continue
             real = float(real_val.values[0])
-            
+
             # Recuperiamo il valore del quantile selezionato (setpoint base)
             pred_base = float(df_setpoint.loc[ts].iloc[0])
-            
+
             pred_p10 = float(df_p10.loc[ts].iloc[0])
             pred_p90 = float(df_p90.loc[ts].iloc[0])
             pred_pid = float(pid_predictions[i])
+            pred_kalman = float(kalman_predictions[i])
 
             # Calcolo metriche per modello originale (basato sul quantile scelto)
-            real_rounded = int(round(real))
-            pred_base_rounded = int(round(pred_base))
-            
             # CRIT-8: Calcolo scostamenti sui valori FLOAT per non mascherare errori piccoli
             diff_raw = pred_base - real
             if diff_raw < -0.01: # Soglia minima per considerare under-provisioning
@@ -201,7 +209,6 @@ class BacktestService:
             # Calcolo metriche per PID
             pred_pid_val = pred_pid if pred_pid is not None and np.isfinite(pred_pid) else 0.0
             diff_pid = pred_pid_val - real
-            
             if diff_pid < -0.01:
                 under_count_pid += 1
                 under_sum_pid += abs(diff_pid)
@@ -209,10 +216,24 @@ class BacktestService:
                 over_count_pid += 1
                 over_sum_pid += diff_pid
 
+            # Calcolo metriche per Kalman
+            pred_kalman_val = pred_kalman if pred_kalman is not None and np.isfinite(pred_kalman) else 0.0
+            diff_kalman = pred_kalman_val - real
+            if diff_kalman < -0.01:
+                under_count_kalman += 1
+                under_sum_kalman += abs(diff_kalman)
+            elif diff_kalman > 0.01:
+                over_count_kalman += 1
+                over_sum_kalman += diff_kalman
+
             # Protezione finale contro valori non finiti (NaN/Inf) prima del cast a int
             pred_pid_rounded = None
             if pred_pid is not None and np.isfinite(pred_pid):
                 pred_pid_rounded = int(round(pred_pid))
+
+            pred_kalman_rounded = None
+            if pred_kalman is not None and np.isfinite(pred_kalman):
+                pred_kalman_rounded = int(round(pred_kalman))
 
             results.append(BacktestResult(
                 timestamp=ts, 
@@ -227,25 +248,41 @@ class BacktestService:
                 actual_rounded=round(real),
                 diff_rounded_instances=round(pred_base) - round(real),
                 prediction_pid=pred_pid,
-                prediction_pid_rounded=pred_pid_rounded
+                prediction_pid_rounded=pred_pid_rounded,
+                prediction_kalman=pred_kalman,
+                prediction_kalman_rounded=pred_kalman_rounded
             ))
+
         metrics = BacktestMetrics(
             rmse=rmse(series, forecast_setpoint), 
             mse=mse(series, forecast_setpoint), 
             mae=mae(series, forecast_setpoint), 
             r2=r2_score(series, forecast_setpoint),
+            # Metriche PID
             rmse_pid=rmse(series, pid_series),
             mse_pid=mse(series, pid_series),
             mae_pid=mae(series, pid_series),
             r2_pid=r2_score(series, pid_series),
+            # Metriche Kalman
+            rmse_kalman=rmse(series, kalman_series),
+            mse_kalman=mse(series, kalman_series),
+            mae_kalman=mae(series, kalman_series),
+            r2_kalman=r2_score(series, kalman_series),
+            # Business metrics originale
             under_count=under_count,
             over_count=over_count,
             under_sum=round(under_sum),
             over_sum=round(over_sum),
+            # Business metrics PID
             under_count_pid=under_count_pid,
             over_count_pid=over_count_pid,
             under_sum_pid=round(under_sum_pid),
-            over_sum_pid=round(over_sum_pid)
+            over_sum_pid=round(over_sum_pid),
+            # Business metrics Kalman
+            under_count_kalman=under_count_kalman,
+            over_count_kalman=over_count_kalman,
+            under_sum_kalman=round(under_sum_kalman),
+            over_sum_kalman=round(over_sum_kalman)
         )
 
         return {"results": results, "metrics": metrics}

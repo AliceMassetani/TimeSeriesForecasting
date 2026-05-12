@@ -218,7 +218,7 @@ body {
   border-radius: 50%;
 }
 
-.dot.p50 {
+.dot.prediction {
   background: rgba(153, 102, 255, 1);
 }
 
@@ -386,6 +386,10 @@ body {
 
 .text-pid {
   color: #f39c12;
+}
+
+.text-kalman {
+  color: rgba(251, 191, 36, 1);
 }
 
 .divider {

@@ -22,3 +22,13 @@ class BacktestMetrics(BaseModel):
     over_count_pid: Optional[int] = 0
     under_sum_pid: Optional[float] = 0.0
     over_sum_pid: Optional[float] = 0.0
+
+    # Metriche Kalman
+    mse_kalman: Optional[float] = None
+    rmse_kalman: Optional[float] = None
+    mae_kalman: Optional[float] = None
+    r2_kalman: Optional[float] = None
+    under_count_kalman: Optional[int] = 0
+    over_count_kalman: Optional[int] = 0
+    under_sum_kalman: Optional[float] = 0.0
+    over_sum_kalman: Optional[float] = 0.0

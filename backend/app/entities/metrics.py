@@ -28,3 +28,13 @@ class Metrics(Base):
     over_count_pid = Column(Integer, nullable=True, default=0)
     under_sum_pid = Column(Float, nullable=True, default=0.0)
     over_sum_pid = Column(Float, nullable=True, default=0.0)
+
+    # Metriche Kalman
+    mse_kalman = Column(Float, nullable=True)
+    rmse_kalman = Column(Float, nullable=True)
+    mae_kalman = Column(Float, nullable=True)
+    r2_kalman = Column(Float, nullable=True)
+    under_count_kalman = Column(Integer, nullable=True, default=0)
+    over_count_kalman = Column(Integer, nullable=True, default=0)
+    under_sum_kalman = Column(Float, nullable=True, default=0.0)
+    over_sum_kalman = Column(Float, nullable=True, default=0.0)

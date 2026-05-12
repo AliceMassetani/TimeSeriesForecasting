@@ -13,16 +13,25 @@ interface BacktestMetrics {
   mse_pid?: number;
   mae_pid?: number;
   r2_pid?: number;
-
-  // Nuove metriche
+  rmse_kalman?: number;
+  mse_kalman?: number;
+  mae_kalman?: number;
+  r2_kalman?: number;
+  // Business originale
   under_count?: number;
   over_count?: number;
   under_sum?: number;
   over_sum?: number;
+  // Business PID
   under_count_pid?: number;
   over_count_pid?: number;
   under_sum_pid?: number;
   over_sum_pid?: number;
+  // Business Kalman
+  under_count_kalman?: number;
+  over_count_kalman?: number;
+  under_sum_kalman?: number;
+  over_sum_kalman?: number;
 }
 
 //Risposta di esecuzione backtest
@@ -48,6 +57,8 @@ interface BacktestChartData {
   diff_rounded_instances: number[];
   prediction_pid?: number[];
   prediction_pid_rounded?: number[];
+  prediction_kalman?: number[];
+  prediction_kalman_rounded?: number[];
   metrics?: BacktestMetrics;
 }
 
@@ -241,7 +252,7 @@ interface BacktestChartData {
 
         <div class="legend-custom">
           <div class="legend-item"><span class="dot actual"></span> Reale</div>
-          <div class="legend-item"><span class="dot p50"></span> Previsione (P50)</div>
+          <div class="legend-item"><span class="dot prediction"></span> Previsione</div>
           <div class="legend-item"><span class="dot p90"></span> Area di Previsione (P10-P90)</div>
           <div class="legend-item"><span class="dot diff"></span> Differenza</div>
         </div>
@@ -297,15 +308,15 @@ interface BacktestChartData {
           <div class="divider"></div>
 
           <div class="page-header">
-            <h3 class="text-pid">Allocazione Ottimizzata (Correzione Adattiva)</h3>
-            <p class="subtitle">Piano di allocazione corretto tramite analisi del bias e dei picchi recenti.</p>
+            <h3 class="text-pid">Allocazione PID (Controller Non-Lineare)</h3>
+            <p class="subtitle">Piano di allocazione corretto tramite il controller PID Non-Lineare.</p>
           </div>
 
           <div class="legend-custom" style="margin-top: 1rem;">
             <div class="legend-item"><span class="dot actual"></span> Reale</div>
-            <div class="legend-item"><span class="dot p50" style="background: rgba(153, 102, 255, 1)"></span> Allocazione Corretta</div>
+            <div class="legend-item"><span class="dot prediction"></span> Allocazione PID</div>
             <div class="legend-item"><span class="dot diff" style="background: rgba(255, 159, 64, 1)"></span> Differenza (Correzione - Reale)</div>
-            <div class="legend-item"><span class="dot p90" style="background: rgba(153, 102, 255, 0.3)"></span> Banda Previsione</div>
+            <div class="legend-item"><span class="dot p90" style="background: rgba(153, 102, 255, 0.3)"></span> Banda Previsione Originale</div>
           </div>
 
           <div class="chart-container">
@@ -395,6 +406,108 @@ interface BacktestChartData {
             </div>
           </div>
         }
+
+        @if (chartData?.prediction_kalman_rounded) {
+          <div class="divider"></div>
+
+          <div class="page-header">
+            <h3 class="text-kalman">Allocazione Kalman (Correzione Bias Adattiva)</h3>
+            <p class="subtitle">Piano di allocazione corretto tramite stima ottimale del bias con Filtro di Kalman.</p>
+          </div>
+
+          <div class="legend-custom" style="margin-top: 1rem;">
+            <div class="legend-item"><span class="dot actual"></span> Reale</div>
+            <div class="legend-item"><span class="dot prediction"></span> Allocazione Kalman</div>
+            <div class="legend-item"><span class="dot diff" style="background: rgba(255, 159, 64, 1)"></span> Differenza (Kalman - Reale)</div>
+            <div class="legend-item"><span class="dot p90" style="background: rgba(153, 102, 255, 0.3)"></span> Banda Previsione Originale</div>
+          </div>
+
+          <div class="chart-container">
+            <div class="chart-scroll-container">
+              <div class="chart-wrapper" [style.width]="getChartWidth()" [style.height.px]="chartHeight()">
+                <canvas #kalmanChart></canvas>
+              </div>
+            </div>
+          </div>
+
+          <div class="metrics-grid mt-1-5">
+            <div class="metrics-card kalman-accent">
+              <span class="label">RMSE (Kalman)</span>
+              <div class="value-row">
+                <span class="value">{{ metrics()?.rmse_kalman | number: '1.2-2' }}</span>
+                <span class="comparison-badge" [class.improvement]="(metrics()?.rmse_kalman || 0) < (metrics()?.rmse || 0)" [class.worsening]="(metrics()?.rmse_kalman || 0) > (metrics()?.rmse || 0)">
+                  {{ calculateVariation(metrics()?.rmse_kalman, metrics()?.rmse) }}
+                </span>
+              </div>
+            </div>
+            <div class="metrics-card kalman-accent">
+              <span class="label">MAE (Kalman)</span>
+              <div class="value-row">
+                <span class="value">{{ metrics()?.mae_kalman | number: '1.2-2' }}</span>
+                <span class="comparison-badge" [class.improvement]="(metrics()?.mae_kalman || 0) < (metrics()?.mae || 0)" [class.worsening]="(metrics()?.mae_kalman || 0) > (metrics()?.mae || 0)">
+                  {{ calculateVariation(metrics()?.mae_kalman, metrics()?.mae) }}
+                </span>
+              </div>
+            </div>
+            <div class="metrics-card kalman-accent">
+              <span class="label">MSE (Kalman)</span>
+              <div class="value-row">
+                <span class="value">{{ metrics()?.mse_kalman | number: '1.2-2' }}</span>
+                <span class="comparison-badge" [class.improvement]="(metrics()?.mse_kalman || 0) < (metrics()?.mse || 0)" [class.worsening]="(metrics()?.mse_kalman || 0) > (metrics()?.mse || 0)">
+                  {{ calculateVariation(metrics()?.mse_kalman, metrics()?.mse) }}
+                </span>
+              </div>
+            </div>
+            <div class="metrics-card kalman-accent">
+              <span class="label">R² (Kalman)</span>
+              <div class="value-row">
+                <span class="value">{{ metrics()?.r2_kalman | number: '1.2-2' }}</span>
+                <span class="comparison-badge" [class.improvement]="(metrics()?.r2_kalman || 0) > (metrics()?.r2 || 0)" [class.worsening]="(metrics()?.r2_kalman || 0) < (metrics()?.r2 || 0)">
+                  {{ calculateVariation(metrics()?.r2_kalman, metrics()?.r2) }}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <div class="metrics-grid mt-1">
+            <div class="metrics-card kalman-accent">
+              <span class="label">Sotto-dimensionamento (volte) (Kalman)</span>
+              <div class="value-row">
+                <span class="value">{{ metrics()?.under_count_kalman }}</span>
+                <span class="comparison-badge" [class.improvement]="(metrics()?.under_count_kalman || 0) < (metrics()?.under_count || 0)" [class.worsening]="(metrics()?.under_count_kalman || 0) > (metrics()?.under_count || 0)">
+                  {{ calculateVariation(metrics()?.under_count_kalman, metrics()?.under_count) }}
+                </span>
+              </div>
+            </div>
+            <div class="metrics-card kalman-accent">
+              <span class="label">Sotto-dimensionamento (Numero di istanze) (Kalman)</span>
+              <div class="value-row">
+                <span class="value">{{ metrics()?.under_sum_kalman | number: '1.0-0' }}</span>
+                <span class="comparison-badge" [class.improvement]="(metrics()?.under_sum_kalman || 0) < (metrics()?.under_sum || 0)" [class.worsening]="(metrics()?.under_sum_kalman || 0) > (metrics()?.under_sum || 0)">
+                  {{ calculateVariation(metrics()?.under_sum_kalman, metrics()?.under_sum) }}
+                </span>
+              </div>
+            </div>
+            <div class="metrics-card kalman-accent">
+              <span class="label">Sovra-dimensionamento (volte) (Kalman)</span>
+              <div class="value-row">
+                <span class="value">{{ metrics()?.over_count_kalman }}</span>
+                <span class="comparison-badge" [class.improvement]="(metrics()?.over_count_kalman || 0) < (metrics()?.over_count || 0)" [class.worsening]="(metrics()?.over_count_kalman || 0) > (metrics()?.over_count || 0)">
+                  {{ calculateVariation(metrics()?.over_count_kalman, metrics()?.over_count) }}
+                </span>
+              </div>
+            </div>
+            <div class="metrics-card kalman-accent">
+              <span class="label">Sovra-dimensionamento (Numero di istanze) (Kalman)</span>
+              <div class="value-row">
+                <span class="value">{{ metrics()?.over_sum_kalman | number: '1.0-0' }}</span>
+                <span class="comparison-badge" [class.improvement]="(metrics()?.over_sum_kalman || 0) < (metrics()?.over_sum || 0)" [class.worsening]="(metrics()?.over_sum_kalman || 0) > (metrics()?.over_sum || 0)">
+                  {{ calculateVariation(metrics()?.over_sum_kalman, metrics()?.over_sum) }}
+                </span>
+              </div>
+            </div>
+          </div>
+        }
       }
     </div>
   `,
@@ -453,6 +566,10 @@ interface BacktestChartData {
     .filter-group input, .filter-group select {
       height: 38px;
     }
+    .kalman-accent {
+      border-left: 3px solid rgba(251, 191, 36, 0.8) !important;
+    }
+    .text-kalman { color: rgba(251, 191, 36, 1); }
   `]
 })
 export class BacktestComponent implements OnInit {
@@ -497,8 +614,10 @@ export class BacktestComponent implements OnInit {
 
   chartCanvas = viewChild<ElementRef<HTMLCanvasElement>>('backtestChart');
   pidCanvas = viewChild<ElementRef<HTMLCanvasElement>>('pidChart');
+  kalmanCanvas = viewChild<ElementRef<HTMLCanvasElement>>('kalmanChart');
   chart: any;
   pidChart: any;
+  kalmanChart: any;
   chartHeight = signal(400);
 
   constructor(private apiService: ApiService) { }
@@ -603,6 +722,9 @@ export class BacktestComponent implements OnInit {
       if (data.prediction_pid_rounded) {
         displayData.prediction_pid_rounded = data.prediction_pid_rounded.slice(startIdx);
       }
+      if (data.prediction_kalman_rounded) {
+        displayData.prediction_kalman_rounded = data.prediction_kalman_rounded.slice(startIdx);
+      }
     }
 
     if (!displayData.labels || displayData.labels.length === 0) {
@@ -612,178 +734,146 @@ export class BacktestComponent implements OnInit {
 
     this.chartData = displayData;
     this.hasData.set(true);
+
+    // Destroy grafici esistenti prima del re-render
+    if (this.chart) this.chart.destroy();
+    if (this.pidChart) this.pidChart.destroy();
+    if (this.kalmanChart) this.kalmanChart.destroy();
+    this.chart = null;
+    this.pidChart = null;
+    this.kalmanChart = null;
+
+    // Aspettiamo che Angular renderizzi i canvas dentro i blocchi @if
+    setTimeout(() => this._buildAllCharts(displayData), 0);
+  }
+
+  private _buildAllCharts(displayData: BacktestChartData) {
     const canvas = this.chartCanvas()?.nativeElement;
     const canvasPid = this.pidCanvas()?.nativeElement;
+    const canvasKalman = this.kalmanCanvas()?.nativeElement;
     if (!canvas) return;
 
     const context = canvas.getContext('2d');
     if (!context) return;
 
-    if (this.chart) this.chart.destroy();
-    if (this.pidChart) this.pidChart.destroy();
+    // Helper: opzioni scale condivise (applicate dopo sync)
+    const buildScaleOptions = (title: string, yMin: number, yMax: number) => ({
+      devicePixelRatio: window.devicePixelRatio || 2,
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        title: { display: true, text: title, color: '#ffffff' }
+      },
+      scales: {
+        y: {
+          min: yMin, max: yMax,
+          ticks: { color: '#cccccc' },
+          grid: { color: 'rgba(255, 255, 255, 0.05)' },
+          title: { display: true, text: 'Capacità (Istanze)', color: '#ffffff', font: { size: 16, weight: 'bold', family: 'Inter' }, padding: { bottom: 20 } }
+        },
+        x: {
+          ticks: { color: '#cccccc', maxRotation: 45, minRotation: 45 },
+          grid: { color: 'rgba(255, 255, 255, 0.05)' },
+          title: { display: true, text: 'Tempo', color: '#ffffff', font: { size: 16, weight: 'bold', family: 'Inter' }, padding: { top: 20 } }
+        }
+      }
+    });
 
+    // 1. Grafico Originale
     this.chart = new Chart(context, {
       type: 'line',
       data: {
         labels: displayData.labels,
         datasets: [
-          {
-            label: 'P10',
-            data: displayData.prediction_p10_rounded,
-            borderColor: 'rgba(255, 99, 132, 0)',
-            pointRadius: 0,
-            fill: false,
-            tension: 0.4
-          },
-          {
-            label: 'Prediction Band (P10-P90)',
-            data: displayData.prediction_p90_rounded,
-            borderColor: 'rgba(153, 102, 255, 0.5)',
-            backgroundColor: 'rgba(153,102,255,0.3)',
-            fill: 0,
-            tension: 0.4,
-            borderWidth: 0,
-            cubicInterpolationMode: 'monotone',
-            pointRadius: 0
-          },
-          {
-            label: 'Prediction (P50)',
-            data: displayData.prediction_rounded,
-            borderColor: 'rgba(153, 102, 255, 1)',
-            backgroundColor: 'rgba(153, 102, 255, 0)',
-            fill: false,
-            tension: 0.4,
-            cubicInterpolationMode: 'monotone',
-            pointRadius: 2,
-            borderWidth: 2
-          },
-          {
-            label: 'Diff',
-            data: displayData.diff_rounded_instances,
-            borderColor: 'rgba(255, 159, 64, 1)',
-            backgroundColor: 'rgba(255, 159, 64, 0.1)',
-            fill: true,
-            tension: 0.4,
-            cubicInterpolationMode: 'monotone',
-            pointRadius: 2
-          },
-          {
-            label: 'Actual',
-            data: displayData.actual_rounded,
-            borderColor: 'rgba(75, 192, 192, 1)',
-            backgroundColor: 'rgba(75, 192, 192, 0.2)',
-            fill: false,
-            tension: 0.4,
-            cubicInterpolationMode: 'monotone',
-            pointRadius: 4
-          }
+          { label: 'P10', data: displayData.prediction_p10_rounded, borderColor: 'rgba(255, 99, 132, 0)', pointRadius: 0, fill: false, tension: 0.4 },
+          { label: 'Prediction Band (P10-P90)', data: displayData.prediction_p90_rounded, borderColor: 'rgba(153, 102, 255, 0.5)', backgroundColor: 'rgba(153,102,255,0.3)', fill: 0, tension: 0.4, borderWidth: 0, cubicInterpolationMode: 'monotone', pointRadius: 0 },
+          { label: 'Prediction (P50)', data: displayData.prediction_rounded, borderColor: 'rgba(153, 102, 255, 1)', backgroundColor: 'rgba(153, 102, 255, 0)', fill: false, tension: 0.4, cubicInterpolationMode: 'monotone', pointRadius: 2, borderWidth: 2 },
+          { label: 'Diff', data: displayData.diff_rounded_instances, borderColor: 'rgba(255, 159, 64, 1)', backgroundColor: 'rgba(255, 159, 64, 0.1)', fill: true, tension: 0.4, cubicInterpolationMode: 'monotone', pointRadius: 2 },
+          { label: 'Actual', data: displayData.actual_rounded, borderColor: 'rgba(75, 192, 192, 1)', backgroundColor: 'rgba(75, 192, 192, 0.2)', fill: false, tension: 0.4, cubicInterpolationMode: 'monotone', pointRadius: 4 }
         ]
       },
       options: {
         devicePixelRatio: window.devicePixelRatio || 2,
-        responsive: true,
-        maintainAspectRatio: false,
-        plugins: {
-          legend: { display: false },
-          title: { display: true, text: 'Analisi Backtest', color: '#ffffff' }
-        },
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { display: false }, title: { display: true, text: 'Analisi Backtest', color: '#ffffff' } },
         scales: {
-          y: {
-            beginAtZero: true,
-            ticks: { color: '#cccccc' },
-            grid: { color: 'rgba(255, 255, 255, 0.05)' },
-            title: {
-              display: true,
-              text: 'Capacità (Istanze)',
-              color: '#ffffff',
-              font: { size: 16, weight: 'bold', family: 'Inter' },
-              padding: { bottom: 20 }
-            }
-          },
-          x: {
-            ticks: { color: '#cccccc', maxRotation: 45, minRotation: 45 },
-            grid: { color: 'rgba(255, 255, 255, 0.05)' },
-            title: {
-              display: true,
-              text: 'Tempo',
-              color: '#ffffff',
-              font: { size: 16, weight: 'bold', family: 'Inter' },
-              padding: { top: 20 }
-            }
-          }
+          y: { beginAtZero: true, ticks: { color: '#cccccc' }, grid: { color: 'rgba(255, 255, 255, 0.05)' }, title: { display: true, text: 'Capacità (Istanze)', color: '#ffffff', font: { size: 16, weight: 'bold', family: 'Inter' }, padding: { bottom: 20 } } },
+          x: { ticks: { color: '#cccccc', maxRotation: 45, minRotation: 45 }, grid: { color: 'rgba(255, 255, 255, 0.05)' }, title: { display: true, text: 'Tempo', color: '#ffffff', font: { size: 16, weight: 'bold', family: 'Inter' }, padding: { top: 20 } } }
         }
       }
     });
-
-    // Forza il calcolo delle scale per il primo grafico
     this.chart.update('none');
     let yMin = this.chart.scales['y'].min;
     let yMax = this.chart.scales['y'].max;
 
-    // 2. Chart PID (Calcolo scala globale)
+    // 2. Grafico PID
     if (canvasPid && displayData.prediction_pid_rounded) {
       const ctxPid = canvasPid.getContext('2d');
       if (ctxPid) {
         const diffPid = displayData.prediction_pid_rounded.map((val, i) => val - (displayData.actual_rounded[i] || 0));
-
         this.pidChart = new Chart(ctxPid, {
           type: 'line',
           data: {
             labels: displayData.labels,
             datasets: [
-              { label: 'P10', data: displayData.prediction_p10_rounded, pointRadius: 0, fill: false, tension: 0.4, borderColor: 'transparent' },
-              { label: 'Banda Previsione', data: displayData.prediction_p90_rounded, fill: 0, tension: 0.4, pointRadius: 0, backgroundColor: 'rgba(153,102,255,0.3)' },
-              { label: 'Allocazione Corretta', data: displayData.prediction_pid_rounded, borderColor: 'rgba(153, 102, 255, 1)', tension: 0.4, pointRadius: 0, borderWidth: 2 },
-              { label: 'Diff (PID)', data: diffPid, borderColor: 'rgba(255, 159, 64, 1)', backgroundColor: 'rgba(255, 159, 64, 0.1)', fill: true, tension: 0.4, pointRadius: 0 },
-              { label: 'Actual', data: displayData.actual_rounded, borderColor: 'rgba(75, 192, 192, 1)', tension: 0.4, pointRadius: 4 }
+              { label: 'P10', data: displayData.prediction_p10_rounded, borderColor: 'rgba(255, 99, 132, 0)', pointRadius: 0, fill: false, tension: 0.4 },
+              { label: 'Prediction Band (P10-P90)', data: displayData.prediction_p90_rounded, borderColor: 'rgba(153, 102, 255, 0.5)', backgroundColor: 'rgba(153,102,255,0.3)', fill: 0, tension: 0.4, borderWidth: 0, cubicInterpolationMode: 'monotone', pointRadius: 0 },
+              { label: 'Prediction (PID)', data: displayData.prediction_pid_rounded, borderColor: 'rgba(153, 102, 255, 1)', backgroundColor: 'rgba(153, 102, 255, 0)', fill: false, tension: 0.4, cubicInterpolationMode: 'monotone', pointRadius: 2, borderWidth: 2 },
+              { label: 'Diff', data: diffPid, borderColor: 'rgba(255, 159, 64, 1)', backgroundColor: 'rgba(255, 159, 64, 0.1)', fill: true, tension: 0.4, cubicInterpolationMode: 'monotone', pointRadius: 2 },
+              { label: 'Actual', data: displayData.actual_rounded, borderColor: 'rgba(75, 192, 192, 1)', backgroundColor: 'rgba(75, 192, 192, 0.2)', fill: false, tension: 0.4, cubicInterpolationMode: 'monotone', pointRadius: 4 }
             ]
           },
           options: { responsive: true, maintainAspectRatio: false, scales: { y: { beginAtZero: true } } }
         });
-        
         this.pidChart.update('none');
-        const yAxisPid = this.pidChart.scales['y'];
-        yMin = Math.min(yMin, yAxisPid.min);
-        yMax = Math.max(yMax, yAxisPid.max);
-        
-        // Aggiungiamo un buffer del 10% per evitare tagli in alto
-        yMax = yMax * 1.1;
-
-        // Regoliamo l'altezza del grafico in base al range (min 400px, aumenta con i picchi)
-        const baseHeight = 400;
-        const dynamicHeight = Math.max(baseHeight, Math.min(800, yMax * 8)); // 8px per istanza, max 800px
-        this.chartHeight.set(dynamicHeight);
-
-        // Riapplichiamo la scala globale ad ENTRAMBI
-        this.chart.options.scales.y.min = yMin;
-        this.chart.options.scales.y.max = yMax;
-        this.chart.update();
-
-        this.pidChart.options = {
-          devicePixelRatio: window.devicePixelRatio || 2,
-          responsive: true,
-          maintainAspectRatio: false,
-          plugins: {
-            legend: { display: false },
-            title: { display: true, text: 'Analisi Backtest (Correzione Adattiva)', color: '#ffffff' }
-          },
-          scales: {
-            y: {
-              min: yMin,
-              max: yMax,
-              ticks: { color: '#cccccc' },
-              grid: { color: 'rgba(255, 255, 255, 0.05)' },
-              title: { display: true, text: 'Capacità (Istanze)', color: '#ffffff', font: { size: 16, weight: 'bold' }, padding: { bottom: 20 } }
-            },
-            x: {
-              ticks: { color: '#cccccc', maxRotation: 45, minRotation: 45 },
-              grid: { color: 'rgba(255, 255, 255, 0.05)' },
-              title: { display: true, text: 'Tempo', color: '#ffffff', font: { size: 16, weight: 'bold' }, padding: { top: 20 } }
-            }
-          }
-        };
-        this.pidChart.update();
+        yMin = Math.min(yMin, this.pidChart.scales['y'].min);
+        yMax = Math.max(yMax, this.pidChart.scales['y'].max);
       }
+    }
+
+    // 3. Grafico Kalman
+    if (canvasKalman && displayData.prediction_kalman_rounded) {
+      const ctxKalman = canvasKalman.getContext('2d');
+      if (ctxKalman) {
+        const diffKalman = displayData.prediction_kalman_rounded.map((val, i) => val - (displayData.actual_rounded[i] || 0));
+        this.kalmanChart = new Chart(ctxKalman, {
+          type: 'line',
+          data: {
+            labels: displayData.labels,
+            datasets: [
+              { label: 'P10', data: displayData.prediction_p10_rounded, borderColor: 'rgba(255, 99, 132, 0)', pointRadius: 0, fill: false, tension: 0.4 },
+              { label: 'Prediction Band (P10-P90)', data: displayData.prediction_p90_rounded, borderColor: 'rgba(153, 102, 255, 0.5)', backgroundColor: 'rgba(153,102,255,0.3)', fill: 0, tension: 0.4, borderWidth: 0, cubicInterpolationMode: 'monotone', pointRadius: 0 },
+              { label: 'Prediction (Kalman)', data: displayData.prediction_kalman_rounded, borderColor: 'rgba(153, 102, 255, 1)', backgroundColor: 'rgba(153, 102, 255, 0)', fill: false, tension: 0.4, cubicInterpolationMode: 'monotone', pointRadius: 2, borderWidth: 2 },
+              { label: 'Diff', data: diffKalman, borderColor: 'rgba(255, 159, 64, 1)', backgroundColor: 'rgba(255, 159, 64, 0.1)', fill: true, tension: 0.4, cubicInterpolationMode: 'monotone', pointRadius: 2 },
+              { label: 'Actual', data: displayData.actual_rounded, borderColor: 'rgba(75, 192, 192, 1)', backgroundColor: 'rgba(75, 192, 192, 0.2)', fill: false, tension: 0.4, cubicInterpolationMode: 'monotone', pointRadius: 4 }
+            ]
+          },
+          options: { responsive: true, maintainAspectRatio: false, scales: { y: { beginAtZero: true } } }
+        });
+        this.kalmanChart.update('none');
+        yMin = Math.min(yMin, this.kalmanChart.scales['y'].min);
+        yMax = Math.max(yMax, this.kalmanChart.scales['y'].max);
+      }
+    }
+
+    // 4. Scala globale e altezza dinamica
+    yMax = yMax * 1.1;
+    const dynamicHeight = Math.max(400, Math.min(800, yMax * 8));
+    this.chartHeight.set(dynamicHeight);
+
+    // 5. Applicazione scala globale a tutti e 3 i grafici
+    this.chart.options = buildScaleOptions('Analisi Backtest (Originale)', yMin, yMax);
+    this.chart.update();
+
+    if (this.pidChart) {
+      this.pidChart.options = buildScaleOptions('Analisi Backtest (PID)', yMin, yMax);
+      this.pidChart.update();
+    }
+
+    if (this.kalmanChart) {
+      this.kalmanChart.options = buildScaleOptions('Analisi Backtest (Kalman)', yMin, yMax);
+      this.kalmanChart.update();
     }
   }
 }
