@@ -54,10 +54,10 @@ export class ApiService {
   /**
    * Avvia la generazione del forecast caricando un file CSV
    */
-  runForecast(file: File, historyHours: number = -1): Observable<any> {
+  runForecast(file: File, historyHours: number = -1, quantile: number = 0.9): Observable<any> {
     const formData = new FormData();
     formData.append('file', file);
-    return this.http.post(`${this.apiUrl}/forecast/run?history_hours=${historyHours}`, formData);
+    return this.http.post(`${this.apiUrl}/forecast/run?history_hours=${historyHours}&quantile=${quantile}`, formData);
   }
 
   /**

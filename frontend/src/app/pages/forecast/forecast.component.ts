@@ -3,10 +3,12 @@ import { ApiService } from '../../services/api.service';
 import { ForecastChart } from '../../models/api-data.model';
 import { Chart } from 'chart.js/auto';
 
+import { FormsModule } from '@angular/forms';
+
 @Component({
   selector: 'app-forecast',
   standalone: true,
-  imports: [],
+  imports: [FormsModule],
   template: `
     <div class="page-container">
       <div class="page-header">
@@ -30,6 +32,13 @@ import { Chart } from 'chart.js/auto';
             <option value="336">2 Weeks</option>
             <option value="720">1 Month</option>
             <option value="-1" selected>All Data</option>
+          </select>
+
+          <select [(ngModel)]="forecastQuantile" class="sleek-field">
+            <option [ngValue]="0.5">P50 (mediana)</option>
+            <option [ngValue]="0.75">P75</option>
+            <option [ngValue]="0.9">P90 (default)</option>
+            <option [ngValue]="0.95">P95</option>
           </select>
 
           <button 
@@ -81,27 +90,52 @@ import { Chart } from 'chart.js/auto';
       }
 
       @if (hasData()) {
+        <!-- GRAFICO ORIGINALE -->
+        <div class="page-header" style="margin-top: 2rem;">
+          <h3>Risultati Modello Originale (TSMixer)</h3>
+          <p class="subtitle">Dati grezzi di previsione senza correzioni.</p>
+        </div>
+
         <div class="legend-custom">
           <div class="legend-item"><span class="dot actual"></span> Dati Reali</div>
           <div class="legend-item"><span class="dot p50"></span> Previsione (P50)</div>
           <div class="legend-item"><span class="dot p90"></span> Area di Previsione (P10-P90)</div>
         </div>
-      }
 
-      @if (hasData() || isLoading()) {
         <div class="chart-container">
-          @if (isLoading()) {
-            <div class="flex-row" style="height: 100%; justify-content: center;">
-               <div class="spinner"></div>
-               <span class="text-primary">Caricamento grafico...</span>
-            </div>
-          }
-          
           <div class="chart-scroll-container">
-            <div class="chart-wrapper" [style.width]="chartWidth()">
+            <div class="chart-wrapper" [style.width]="chartWidth()" [style.height.px]="chartHeight()">
               <canvas #forecastChart></canvas>
             </div>
           </div>
+        </div>
+
+        @if (chartData()?.prediction_pid_rounded) {
+          <div class="divider" style="margin: 2rem 0; border-top: 1px solid rgba(255,255,255,0.05);"></div>
+
+          <div class="page-header">
+            <h3 class="text-pid" style="color: #9966ff;">Allocazione Ottimizzata (Correzione Adattiva)</h3>
+            <p class="subtitle">Piano di allocazione corretto tramite analisi del bias e dei picchi recenti.</p>
+          </div>
+
+          <div class="legend-custom" style="margin-top: 1rem;">
+            <div class="legend-item"><span class="dot actual"></span> Dati Reali</div>
+            <div class="legend-item"><span class="dot p50" style="background: rgba(153, 102, 255, 1)"></span> Allocazione Corretta</div>
+            <div class="legend-item"><span class="dot p90" style="background: rgba(153, 102, 255, 0.3)"></span> Banda Previsione</div>
+          </div>
+
+          <div class="chart-container">
+            <div class="chart-scroll-container">
+              <div class="chart-wrapper" [style.width]="chartWidth()" [style.height.px]="chartHeight()">
+                <canvas #pidForecastChart></canvas>
+              </div>
+            </div>
+          </div>
+        }
+      } @else if (isLoading()) {
+        <div class="flex-row" style="height: 100%; justify-content: center; margin-top: 4rem;">
+           <div class="spinner"></div>
+           <span class="text-primary">Caricamento grafico...</span>
         </div>
       }
     </div>
@@ -116,8 +150,10 @@ export class ForecastComponent implements OnInit {
   isLoading = signal(true);
   isForecasting = signal(false);
   hasData = signal(false);
+  chartHeight = signal(400);
   selectedFile = signal<File | null>(null);
   historyWindow = signal(-1);
+  forecastQuantile = 0.9;
   forecastError = signal<string | null>(null);
   loadError = signal<string | null>(null);
   dataCapped = signal(false);
@@ -128,7 +164,9 @@ export class ForecastComponent implements OnInit {
   }
 
   chartCanvas = viewChild<ElementRef<HTMLCanvasElement>>('forecastChart');
+  pidCanvas = viewChild<ElementRef<HTMLCanvasElement>>('pidForecastChart');
   chart: any;
+  pidChart: any;
   chartData = signal<ForecastChart | null>(null);
 
   chartWidth = computed(() => {
@@ -159,7 +197,7 @@ export class ForecastComponent implements OnInit {
     this.forecastError.set(null);
     this.dataCapped.set(false);
 
-    this.apiService.runForecast(file, this.historyWindow()).subscribe({
+    this.apiService.runForecast(file, this.historyWindow(), this.forecastQuantile).subscribe({
       next: (res: any) => {
         console.log('Forecast completato:', res);
         this.isForecasting.set(false);
@@ -216,9 +254,16 @@ export class ForecastComponent implements OnInit {
       if (data.prediction_rounded) displayData.prediction_rounded = data.prediction_rounded.slice(startIdx);
       if (data.prediction_p10_rounded) displayData.prediction_p10_rounded = data.prediction_p10_rounded.slice(startIdx);
       if (data.prediction_p90_rounded) displayData.prediction_p90_rounded = data.prediction_p90_rounded.slice(startIdx);
+      if (data.prediction_pid_rounded) displayData.prediction_pid_rounded = data.prediction_pid_rounded.slice(startIdx);
+    }
+
+    if (!displayData.labels || displayData.labels.length === 0) {
+      this.hasData.set(false);
+      return;
     }
 
     this.chartData.set(displayData);
+    this.hasData.set(true);
     const canvas = this.chartCanvas()?.nativeElement;
     if (!canvas) return;
 
@@ -250,6 +295,7 @@ export class ForecastComponent implements OnInit {
         updateVal(displayData.prediction_rounded, lastActualIndex, Math.round(bridgeVal));
         updateVal(displayData.prediction_p10_rounded, lastActualIndex, Math.round(bridgeVal));
         updateVal(displayData.prediction_p90_rounded, lastActualIndex, Math.round(bridgeVal));
+        updateVal(displayData.prediction_pid_rounded, lastActualIndex, Math.round(bridgeVal));
       }
     }
 
@@ -257,6 +303,7 @@ export class ForecastComponent implements OnInit {
     if (!ctx) return;
 
     if (this.chart) this.chart.destroy();
+    if (this.pidChart) this.pidChart.destroy();
 
     this.chart = new Chart(ctx, {
       type: 'line',
@@ -340,5 +387,77 @@ export class ForecastComponent implements OnInit {
         }
       }
     });
+
+    // Sincronizzazione Scale Y Globale
+    this.chart.update('none');
+    let yMin = this.chart.scales['y'].min;
+    let yMax = this.chart.scales['y'].max;
+
+    // 2. Chart PID Forecast
+    const canvasPid = this.pidCanvas()?.nativeElement;
+    if (canvasPid && displayData.prediction_pid_rounded) {
+      const ctxPid = canvasPid.getContext('2d');
+      if (ctxPid) {
+        const diffPid = (displayData.prediction_pid_rounded || []).map((val, i) => val - (displayData.actual_rounded?.[i] || displayData.actual?.[i] || 0));
+
+        this.pidChart = new Chart(ctxPid, {
+          type: 'line',
+          data: {
+            labels: displayData.labels,
+            datasets: [
+              { label: 'P10', data: displayData.prediction_p10_rounded, pointRadius: 0, fill: false, tension: 0.4, borderColor: 'transparent' },
+              { label: 'Banda Previsione', data: displayData.prediction_p90_rounded, fill: 0, tension: 0.4, pointRadius: 0, backgroundColor: 'rgba(153, 102, 255, 0.3)' },
+              { label: 'Allocazione Corretta', data: displayData.prediction_pid_rounded, borderColor: 'rgba(153, 102, 255, 1)', tension: 0.4, pointRadius: 0, borderWidth: 2 },
+              { label: 'Diff (PID)', data: diffPid, borderColor: 'rgba(255, 159, 64, 1)', backgroundColor: 'rgba(255, 159, 64, 0.1)', fill: true, tension: 0.4, pointRadius: 0 },
+              { label: 'Actual', data: displayData.actual_rounded, borderColor: 'rgba(75, 192, 192, 1)', tension: 0.4, pointRadius: 4 }
+            ]
+          },
+          options: { responsive: true, maintainAspectRatio: false, scales: { y: { beginAtZero: true } } }
+        });
+
+        this.pidChart.update('none');
+        const yAxisPid = this.pidChart.scales['y'];
+        yMin = Math.min(yMin, yAxisPid.min);
+        yMax = Math.max(yMax, yAxisPid.max);
+        
+        // Aggiungiamo un buffer del 15% per evitare tagli in alto
+        yMax = yMax * 1.15;
+
+        // Regoliamo l'altezza del grafico in base al range
+        const baseHeight = 400;
+        const dynamicHeight = Math.max(baseHeight, Math.min(800, yMax * 8)); 
+        this.chartHeight.set(dynamicHeight);
+
+        // Riapplichiamo la scala globale ad ENTRAMBI
+        this.chart.options.scales.y.min = yMin;
+        this.chart.options.scales.y.max = yMax;
+        this.chart.update();
+
+        this.pidChart.options = {
+          devicePixelRatio: window.devicePixelRatio || 2,
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { display: false },
+            title: { display: true, text: 'Forecast (Correzione Adattiva)', color: '#ffffff' }
+          },
+          scales: {
+            y: {
+              min: yMin,
+              max: yMax,
+              grid: { color: 'rgba(255, 255, 255, 0.05)' },
+              ticks: { color: '#94a3b8' },
+              title: { display: true, text: 'Capacità (Istanze)', color: '#ffffff', font: { size: 16, weight: 'bold' }, padding: { bottom: 20 } }
+            },
+            x: {
+              grid: { color: 'rgba(255, 255, 255, 0.05)' },
+              ticks: { color: '#94a3b8', maxRotation: 45 },
+              title: { display: true, text: 'Tempo', color: '#ffffff', font: { size: 16, weight: 'bold' }, padding: { top: 20 } }
+            }
+          }
+        };
+        this.pidChart.update();
+      }
+    }
   }
 }

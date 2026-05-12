@@ -42,6 +42,7 @@ async def clear_forecasts(db: Session = Depends(get_db)):
 async def run_forecast_upload(
     file: UploadFile = File(...), 
     history_hours: int = -1,
+    quantile: float = 0.9,
     db: Session = Depends(get_db)
 ):
     """
@@ -58,7 +59,7 @@ async def run_forecast_upload(
         df = data_processing_service.process_aws_csv(contents, TARGET)
 
         # 2. Generazione Forecast
-        res = forecast_service.run_forecast_pipeline(df, TARGET, repo, history_hours=history_hours)
+        res = forecast_service.run_forecast_pipeline(df, TARGET, repo, history_hours=history_hours, quantile=quantile)
         
         return {
             "message": f"Forecast completato! Storico: {res['history']} ore, Previsioni: {res['predictions']} ore.",

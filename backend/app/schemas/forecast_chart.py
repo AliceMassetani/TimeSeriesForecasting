@@ -12,4 +12,6 @@ class ForecastChart(BaseModel):
     prediction_rounded: List[Optional[int]]
     prediction_p10_rounded: List[Optional[int]]
     prediction_p90_rounded: List[Optional[int]]
+    prediction_pid: List[Optional[float]]
+    prediction_pid_rounded: List[Optional[int]]
     actual: List[Optional[int]]

@@ -52,6 +52,8 @@ class ForecastRepository(IForecastRepository):
             prediction_rounded=df['prediction_rounded'].tolist(),
             prediction_p10_rounded=df['prediction_p10_rounded'].tolist(),
             prediction_p90_rounded=df['prediction_p90_rounded'].tolist(),
+            prediction_pid=df['prediction_pid'].tolist(),
+            prediction_pid_rounded=df['prediction_pid_rounded'].tolist(),
             actual=df['actual_value'].tolist()
         )
 

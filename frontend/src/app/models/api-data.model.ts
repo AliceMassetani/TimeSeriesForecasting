@@ -17,6 +17,8 @@ export interface ForecastChart {
   prediction_rounded: number[];
   prediction_p10_rounded: number[];
   prediction_p90_rounded: number[];
+  prediction_pid?: number[];
+  prediction_pid_rounded?: number[];
   actual: (number | null)[];
   actual_rounded?: (number | null)[];
 }

@@ -248,7 +248,7 @@ interface BacktestChartData {
 
         <div class="chart-container">
           <div class="chart-scroll-container">
-            <div class="chart-wrapper" [style.width]="getChartWidth()">
+            <div class="chart-wrapper" [style.width]="getChartWidth()" [style.height.px]="chartHeight()">
               <canvas #backtestChart></canvas>
             </div>
           </div>
@@ -270,7 +270,7 @@ interface BacktestChartData {
           </div>
           <div class="metrics-card">
             <span class="label">R²</span>
-            <span class="value">{{ metrics()?.r2 | number: '1.4-4' }}</span>
+            <span class="value">{{ metrics()?.r2 | number: '1.2-2' }}</span>
           </div>
         </div>
 
@@ -297,20 +297,20 @@ interface BacktestChartData {
           <div class="divider"></div>
 
           <div class="page-header">
-            <h3 class="text-pid">Correzione PID (Non-lineare)</h3>
-            <p class="subtitle">Piano di allocazione ottimizzato con logica PID derivativa per eliminare il lag.</p>
+            <h3 class="text-pid">Allocazione Ottimizzata (Correzione Adattiva)</h3>
+            <p class="subtitle">Piano di allocazione corretto tramite analisi del bias e dei picchi recenti.</p>
           </div>
 
           <div class="legend-custom" style="margin-top: 1rem;">
             <div class="legend-item"><span class="dot actual"></span> Reale</div>
-            <div class="legend-item"><span class="dot p50" style="background: rgba(153, 102, 255, 1)"></span> Allocazione PID</div>
-            <div class="legend-item"><span class="dot diff" style="background: rgba(255, 159, 64, 1)"></span> Differenza (PID - Reale)</div>
+            <div class="legend-item"><span class="dot p50" style="background: rgba(153, 102, 255, 1)"></span> Allocazione Corretta</div>
+            <div class="legend-item"><span class="dot diff" style="background: rgba(255, 159, 64, 1)"></span> Differenza (Correzione - Reale)</div>
             <div class="legend-item"><span class="dot p90" style="background: rgba(153, 102, 255, 0.3)"></span> Banda Previsione</div>
           </div>
 
           <div class="chart-container">
             <div class="chart-scroll-container">
-              <div class="chart-wrapper" [style.width]="getChartWidth()">
+              <div class="chart-wrapper" [style.width]="getChartWidth()" [style.height.px]="chartHeight()">
                 <canvas #pidChart></canvas>
               </div>
             </div>
@@ -348,7 +348,7 @@ interface BacktestChartData {
             <div class="metrics-card pid-accent">
               <span class="label">R² (PID)</span>
               <div class="value-row">
-                <span class="value">{{ metrics()?.r2_pid | number: '1.4-4' }}</span>
+                <span class="value">{{ metrics()?.r2_pid | number: '1.2-2' }}</span>
                 <span class="comparison-badge" [class.improvement]="(metrics()?.r2_pid || 0) > (metrics()?.r2 || 0)" [class.worsening]="(metrics()?.r2_pid || 0) < (metrics()?.r2 || 0)">
                   {{ calculateVariation(metrics()?.r2_pid, metrics()?.r2) }}
                 </span>
@@ -499,6 +499,7 @@ export class BacktestComponent implements OnInit {
   pidCanvas = viewChild<ElementRef<HTMLCanvasElement>>('pidChart');
   chart: any;
   pidChart: any;
+  chartHeight = signal(400);
 
   constructor(private apiService: ApiService) { }
 
@@ -554,7 +555,7 @@ export class BacktestComponent implements OnInit {
         window.URL.revokeObjectURL(url);
         document.body.removeChild(a);
       },
-      error: (err) => {
+      error: (err: any) => {
         console.error('Errore durante l\'esportazione:', err);
       }
     });
@@ -602,6 +603,11 @@ export class BacktestComponent implements OnInit {
       if (data.prediction_pid_rounded) {
         displayData.prediction_pid_rounded = data.prediction_pid_rounded.slice(startIdx);
       }
+    }
+
+    if (!displayData.labels || displayData.labels.length === 0) {
+      this.hasData.set(false);
+      return;
     }
 
     this.chartData = displayData;
@@ -709,7 +715,12 @@ export class BacktestComponent implements OnInit {
       }
     });
 
-    // 2. Chart PID (Aggiunta Nuova)
+    // Forza il calcolo delle scale per il primo grafico
+    this.chart.update('none');
+    let yMin = this.chart.scales['y'].min;
+    let yMax = this.chart.scales['y'].max;
+
+    // 2. Chart PID (Calcolo scala globale)
     if (canvasPid && displayData.prediction_pid_rounded) {
       const ctxPid = canvasPid.getContext('2d');
       if (ctxPid) {
@@ -720,93 +731,58 @@ export class BacktestComponent implements OnInit {
           data: {
             labels: displayData.labels,
             datasets: [
-              {
-                label: 'P10',
-                data: displayData.prediction_p10_rounded,
-                borderColor: 'rgba(255, 99, 132, 0)',
-                pointRadius: 0,
-                fill: false,
-                tension: 0.4
-              },
-              {
-                label: 'Prediction Band (P10-P90)',
-                data: displayData.prediction_p90_rounded,
-                borderColor: 'rgba(153, 102, 255, 0.5)',
-                backgroundColor: 'rgba(153,102,255,0.3)',
-                fill: 0,
-                tension: 0.4,
-                borderWidth: 0,
-                cubicInterpolationMode: 'monotone',
-                pointRadius: 0
-              },
-              {
-                label: 'Prediction (PID)',
-                data: displayData.prediction_pid_rounded,
-                borderColor: 'rgba(153, 102, 255, 1)',
-                backgroundColor: 'rgba(153, 102, 255, 0)',
-                fill: false,
-                tension: 0.4,
-                cubicInterpolationMode: 'monotone',
-                pointRadius: 2,
-                borderWidth: 2
-              },
-              {
-                label: 'Diff (PID)',
-                data: diffPid,
-                borderColor: 'rgba(255, 159, 64, 1)',
-                backgroundColor: 'rgba(255, 159, 64, 0.1)',
-                fill: true,
-                tension: 0.4,
-                cubicInterpolationMode: 'monotone',
-                pointRadius: 2
-              },
-              {
-                label: 'Actual',
-                data: displayData.actual_rounded,
-                borderColor: 'rgba(75, 192, 192, 1)',
-                backgroundColor: 'rgba(75, 192, 192, 0.2)',
-                fill: false,
-                tension: 0.4,
-                cubicInterpolationMode: 'monotone',
-                pointRadius: 4
-              }
+              { label: 'P10', data: displayData.prediction_p10_rounded, pointRadius: 0, fill: false, tension: 0.4, borderColor: 'transparent' },
+              { label: 'Banda Previsione', data: displayData.prediction_p90_rounded, fill: 0, tension: 0.4, pointRadius: 0, backgroundColor: 'rgba(153,102,255,0.3)' },
+              { label: 'Allocazione Corretta', data: displayData.prediction_pid_rounded, borderColor: 'rgba(153, 102, 255, 1)', tension: 0.4, pointRadius: 0, borderWidth: 2 },
+              { label: 'Diff (PID)', data: diffPid, borderColor: 'rgba(255, 159, 64, 1)', backgroundColor: 'rgba(255, 159, 64, 0.1)', fill: true, tension: 0.4, pointRadius: 0 },
+              { label: 'Actual', data: displayData.actual_rounded, borderColor: 'rgba(75, 192, 192, 1)', tension: 0.4, pointRadius: 4 }
             ]
           },
-          options: {
-            devicePixelRatio: window.devicePixelRatio || 2,
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: {
-              legend: { display: false },
-              title: { display: true, text: 'Analisi Backtest (Correzione PID)', color: '#ffffff' }
+          options: { responsive: true, maintainAspectRatio: false, scales: { y: { beginAtZero: true } } }
+        });
+        
+        this.pidChart.update('none');
+        const yAxisPid = this.pidChart.scales['y'];
+        yMin = Math.min(yMin, yAxisPid.min);
+        yMax = Math.max(yMax, yAxisPid.max);
+        
+        // Aggiungiamo un buffer del 10% per evitare tagli in alto
+        yMax = yMax * 1.1;
+
+        // Regoliamo l'altezza del grafico in base al range (min 400px, aumenta con i picchi)
+        const baseHeight = 400;
+        const dynamicHeight = Math.max(baseHeight, Math.min(800, yMax * 8)); // 8px per istanza, max 800px
+        this.chartHeight.set(dynamicHeight);
+
+        // Riapplichiamo la scala globale ad ENTRAMBI
+        this.chart.options.scales.y.min = yMin;
+        this.chart.options.scales.y.max = yMax;
+        this.chart.update();
+
+        this.pidChart.options = {
+          devicePixelRatio: window.devicePixelRatio || 2,
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { display: false },
+            title: { display: true, text: 'Analisi Backtest (Correzione Adattiva)', color: '#ffffff' }
+          },
+          scales: {
+            y: {
+              min: yMin,
+              max: yMax,
+              ticks: { color: '#cccccc' },
+              grid: { color: 'rgba(255, 255, 255, 0.05)' },
+              title: { display: true, text: 'Capacità (Istanze)', color: '#ffffff', font: { size: 16, weight: 'bold' }, padding: { bottom: 20 } }
             },
-            scales: {
-              y: {
-                beginAtZero: true,
-                ticks: { color: '#cccccc' },
-                grid: { color: 'rgba(255, 255, 255, 0.05)' },
-                title: {
-                  display: true,
-                  text: 'Capacità (Istanze)',
-                  color: '#ffffff',
-                  font: { size: 16, weight: 'bold', family: 'Inter' },
-                  padding: { bottom: 20 }
-                }
-              },
-              x: {
-                ticks: { color: '#cccccc', maxRotation: 45, minRotation: 45 },
-                grid: { color: 'rgba(255, 255, 255, 0.05)' },
-                title: {
-                  display: true,
-                  text: 'Tempo',
-                  color: '#ffffff',
-                  font: { size: 16, weight: 'bold', family: 'Inter' },
-                  padding: { top: 20 }
-                }
-              }
+            x: {
+              ticks: { color: '#cccccc', maxRotation: 45, minRotation: 45 },
+              grid: { color: 'rgba(255, 255, 255, 0.05)' },
+              title: { display: true, text: 'Tempo', color: '#ffffff', font: { size: 16, weight: 'bold' }, padding: { top: 20 } }
             }
           }
-        });
+        };
+        this.pidChart.update();
       }
     }
   }

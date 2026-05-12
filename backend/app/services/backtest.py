@@ -137,24 +137,21 @@ class BacktestService:
         # Forecast precedente (inizializzato al primo valore per errore zero al colstart)
         prev_forecast_val = float(df_setpoint.iloc[0].iloc[0])
 
+        # Inizializziamo il Kalman Filter (Versione Ottimizzata 2.0)
+        from .kalman_filter import KalmanFilter
+        kf = KalmanFilter() # Usa i nuovi default Q=0.1, R=0.01
+
         for (ts, row_p50), (_, row_sp) in zip(df_p50.iterrows(), df_setpoint.iterrows()):
             pred_sp = float(row_sp.iloc[0])
             
-            # 1. Calcoliamo il BIAS del modello al passo precedente
-            # Errore = Quanto la realtà si è scostata dalla previsione che avevamo fatto per quel momento
+            # 1. Calcoliamo l'errore del modello al passo precedente
             model_error = current_real_val - prev_forecast_val
             
-            # 2. Il PID lavora sull'errore del modello (Setpoint dell'errore è 0)
-            # Usiamo update_correction o una versione che restituisce solo il delta
-            # Per semplicità usiamo il nostro update ma con setpoint 0 e current_value = model_error
-            # Ma dobbiamo stare attenti: il nostro update restituisce setpoint + correction.
-            # Vogliamo solo la correzione.
+            # 2. Il Filtro di Kalman stima il BIAS ottimale (con Safety Margin integrato)
+            estimated_bias = kf.update(model_error)
             
-            # Usiamo una logica pulita: la correzione è ciò che il PID decide di aggiungere
-            # per compensare l'errore del modello.
-            pid_correction = pid.update(0, model_error) - 0 # Ora il segno è concorde
-            
-            current_pid_val = pred_sp + pid_correction
+            # Applichiamo il bias stimato al forecast futuro
+            current_pid_val = pred_sp + estimated_bias
             
             # Clip finale per sicurezza
             current_pid_val = float(np.clip(current_pid_val, 0.0, safety_limit))
