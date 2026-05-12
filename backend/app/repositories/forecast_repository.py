@@ -54,6 +54,8 @@ class ForecastRepository(IForecastRepository):
             prediction_p90_rounded=df['prediction_p90_rounded'].tolist(),
             prediction_pid=df['prediction_pid'].tolist(),
             prediction_pid_rounded=df['prediction_pid_rounded'].tolist(),
+            prediction_kalman=df['prediction_kalman'].tolist(),
+            prediction_kalman_rounded=df['prediction_kalman_rounded'].tolist(),
             actual=df['actual_value'].tolist()
         )
 

@@ -14,4 +14,6 @@ class ForecastChart(BaseModel):
     prediction_p90_rounded: List[Optional[int]]
     prediction_pid: List[Optional[float]]
     prediction_pid_rounded: List[Optional[int]]
+    prediction_kalman: List[Optional[float]]
+    prediction_kalman_rounded: List[Optional[int]]
     actual: List[Optional[int]]
