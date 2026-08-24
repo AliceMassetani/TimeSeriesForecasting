@@ -110,9 +110,32 @@ services:
     networks:
       - TimeSeriesForcasting_network
 
+  # --------------------------------------------------------------------------
+  # LocalStack — Simulazione AWS locale (Lambda, EventBridge, CloudWatch)
+  # Accessibile su http://localhost:4566
+  # --------------------------------------------------------------------------
+  localstack:
+    image: localstack/localstack
+    container_name: TimeSeriesForcasting_localstack
+    ports:
+      - "4566:4566"
+    environment:
+      - SERVICES=lambda,events,cloudwatch
+      - LAMBDA_DOCKER_NETWORK=predictive-autoscaler-ml_TimeSeriesForcasting_network
+      - LOCALSTACK_AUTH_TOKEN=${LOCALSTACK_AUTH_TOKEN}
+      - DEBUG=1
+    volumes:
+      - ./localstack/init:/etc/localstack/init/ready.d
+      - ./lambda:/etc/localstack/lambda-code
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks:
+      - TimeSeriesForcasting_network
+    depends_on:
+      - backend
+
 networks:
   TimeSeriesForcasting_network:
     driver: bridge
 
 volumes:
-  mariadb_data:
+  mariadb_data:

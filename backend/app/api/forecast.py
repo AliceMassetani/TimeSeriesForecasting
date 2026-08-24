@@ -26,6 +26,36 @@ async def get_forecast_history(db: Session = Depends(get_db)):
 
     return chart_data
 
+@router.get("/latest-prediction")
+async def get_latest_prediction(db: Session = Depends(get_db)):
+    """
+    Restituisce la previsione futura più imminente.
+    Chiamato dalla Lambda per impostare la DesiredCapacity su AppStream.
+    """
+    repo = ForecastRepository(db)
+    row = repo.get_latest_prediction()
+
+    if row is None:
+        raise HTTPException(status_code=404, detail="Nessuna previsione futura disponibile")
+
+    # La Lambda si aspetta "desired_capacity".
+    # Priorità: Kalman > PID > P90 arrotondato > P50 arrotondato
+    desired = (
+        row.prediction_kalman_rounded
+        or row.prediction_pid_rounded
+        or row.prediction_p90_rounded
+        or row.prediction_rounded
+    )
+
+    return {
+        "desired_capacity": desired,
+        "timestamp": row.timestamp.isoformat(),
+        "prediction_p50": row.prediction,
+        "prediction_p90": row.prediction_p90,
+        "prediction_kalman": row.prediction_kalman,
+        "prediction_pid": row.prediction_pid,
+    }
+
 @router.delete("/")
 async def clear_forecasts(db: Session = Depends(get_db)):
     """

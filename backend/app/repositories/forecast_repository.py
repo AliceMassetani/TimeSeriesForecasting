@@ -59,6 +59,19 @@ class ForecastRepository(IForecastRepository):
             actual=df['actual_value'].tolist()
         )
 
+    def get_latest_prediction(self) -> Optional[ForecastResult]:
+        """
+        Restituisce la previsione futura più imminente (la prima riga con prediction != null,
+        ordinata per timestamp crescente). Questo è il prossimo valore su cui agire.
+        """
+        return (
+            self.db.query(ForecastResult)
+            .filter(ForecastResult.prediction.isnot(None))
+            .filter(ForecastResult.actual_value.is_(None))
+            .order_by(ForecastResult.timestamp)
+            .first()
+        )
+
     def create_bulk(self, results: List[ForecastResult]) -> int:
         try:
             self.db.add_all(results)

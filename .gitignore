@@ -223,3 +223,23 @@ checkpoints/
 # Exclude local logs and execution outputs
 .antigravity/
 *.log
+
+# --- Lambda (dipendenze installate da LocalStack deploy.sh) ---
+# Solo lambda_function.py e requirements.txt vanno committati.
+# Tutto il resto viene installato da pip dentro il container.
+lambda/boto3/
+lambda/boto3-*.dist-info/
+lambda/botocore/
+lambda/botocore-*.dist-info/
+lambda/dateutil/
+lambda/jmespath/
+lambda/jmespath-*.dist-info/
+lambda/python_dateutil-*.dist-info/
+lambda/s3transfer/
+lambda/s3transfer-*.dist-info/
+lambda/six.py
+lambda/six-*.dist-info/
+lambda/urllib3/
+lambda/urllib3-*.dist-info/
+lambda/bin/
+

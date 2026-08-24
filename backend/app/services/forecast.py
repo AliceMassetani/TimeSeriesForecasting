@@ -203,10 +203,12 @@ class ForecastService:
 
     def run_forecast_pipeline(self, df: pd.DataFrame, target: str, repository, n: int = 2, history_hours: int = -1, quantile: float = 0.9) -> dict:
         """
-        Pipeline: Cancella vecchi forecast e salva i nuovi.
+        Pipeline: Genera nuovo forecast, poi cancella i vecchi e salva i nuovi.
+        L'ordine (genera → cancella → salva) garantisce che se la generazione
+        fallisce, le vecchie previsioni restano nel DB come fallback.
         """
-        repository.delete_all()
         data = self.run_forecast(df, target, n, history_hours, quantile)
+        repository.delete_all()
         total = repository.create_bulk(data["results"])
         
         return {

@@ -1,0 +1,4 @@
+# Dipendenze Lambda
+# boto3 è già incluso nel runtime Lambda di AWS, 
+# ma lo includiamo per test locale con LocalStack
+boto3>=1.34.0
