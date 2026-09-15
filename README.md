@@ -28,6 +28,11 @@ Il backend adotta un'architettura a livelli (N-Tier) fortemente disaccoppiata:
   - *Entities* (SQLAlchemy) in `app/entities/` mappano le tabelle del database relazionale.
   - *Schemas* (Pydantic) in `app/schemas/` gestiscono la serializzazione/deserializzazione e la validazione dei dati JSON scambiati via API.
 
+### Architettura Cloud-Native (Reverse Proxy)
+Per garantire una netta separazione tra traffico utente e richieste ai servizi, l'applicativo utilizza **Nginx** come reverse proxy unico (esposto sulla porta 80). 
+- Le richieste del browser dirette alla radice (`/`) vengono instradate alla Single Page Application (Angular).
+- Tutte le chiamate al backend (es. dati ML o autenticazione) vengono intercettate tramite il prefisso `/api/` e instradate internamente. In questo modo le porte dei container (FastAPI, Angular) restano nascoste e non sono mai esposte direttamente, rispettando i principi di sicurezza Cloud-Native e prevenendo problemi di CORS.
+
 ### Autenticazione Stateless (JWT + BCrypt)
 A differenza delle sessioni classiche *stateful* basate su cookie (che richiedono il salvataggio dello stato sul server o su Redis), l'applicativo implementa un'autenticazione **Stateless basata su JSON Web Tokens (JWT)**.
 - **Vantaggi Architetturali:** Assoluta scalabilità orizzontale. Il server backend non deve ricordare quali utenti sono loggati; ogni richiesta contiene già nel token crittografato tutte le informazioni necessarie per l'identificazione.
@@ -68,6 +73,9 @@ Una volta configurato l'ambiente, procedi con l'avvio del sistema:
 docker compose up -d
 ```
 
+L'applicazione sarà immediatamente disponibile all'indirizzo `http://localhost`. Grazie a Nginx, non dovrai esporre porte aggiuntive.
+La documentazione interattiva (Swagger UI) per le API del backend sarà accessibile da `http://localhost/docs`.
+
 ---
 
 ## 5. Tech Stack
@@ -92,7 +100,7 @@ docker compose up -d
 
 ## 6. Struttura delle API REST
 
-L'API documenta automaticamente le sue rotte (disponibili via Swagger UI all'indirizzo `http://localhost:8000/docs`). Il sistema di rotte si divide in due macro-categorie:
+L'API documenta automaticamente le sue rotte (disponibili via Swagger UI all'indirizzo `http://localhost/docs`). Il sistema di rotte si divide in due macro-categorie, tutte unificate sotto il path `/api/`:
 
 ### 🔓 Rotte Pubbliche (Nessuna Autenticazione Richiesta)
 
@@ -105,11 +113,11 @@ L'API documenta automaticamente le sue rotte (disponibili via Swagger UI all'ind
 
 Tutti i seguenti endpoint richiedono tassativamente un Token JWT valido passato negli headers HTTP della richiesta (`Authorization: Bearer <token>`). In caso contrario il server restituirà un errore `401 Unauthorized` o `403 Forbidden`.
 
-- `GET /forecast/*` (es. `/history`, `/run`)
+- `GET /api/forecast/*` (es. `/history`, `/run`)
   - **Azione:** Generazione predizioni future e interrogazione storico predittivo.
-- `GET /backtest/*` (es. `/history`, `/run`)
+- `GET /api/backtest/*` (es. `/history`, `/run`)
   - **Azione:** Simulazione di affidabilità del modello su dati passati e relative metriche prestazionali (MSE, RMSE).
-- `POST /train/*`
+- `POST /api/train/*`
   - **Azione:** Addestramento e ricalibrazione del modello di Machine Learning con nuovi set di dati.
 - `DELETE /api/auth/users/{id}`
   - **Azione:** Eliminazione del proprio account utente (implementazione a scopi di sicurezza e protezione IDOR).
