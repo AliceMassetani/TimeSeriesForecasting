@@ -46,6 +46,6 @@ async def root():
 app.include_router(auth_router, prefix="/api/auth", tags=["Auth"])
 
 # Router PROTETTI — Richiedono JWT valido nell'header Authorization: Bearer <token>
-app.include_router(backtest_router, prefix="/backtest", tags=["Backtest"], dependencies=[Depends(get_current_user)])
-app.include_router(forecast_router, prefix="/forecast", tags=["Forecast"], dependencies=[Depends(get_current_user)])
-app.include_router(training_router, prefix="/train", tags=["Training"], dependencies=[Depends(get_current_user)])
+app.include_router(backtest_router, prefix="/api/backtest", tags=["Backtest"], dependencies=[Depends(get_current_user)])
+app.include_router(forecast_router, prefix="/api/forecast", tags=["Forecast"], dependencies=[Depends(get_current_user)])
+app.include_router(training_router, prefix="/api/train", tags=["Training"], dependencies=[Depends(get_current_user)])

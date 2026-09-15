@@ -58,8 +58,8 @@ services:
       DB_NAME: ${MYSQL_DATABASE:-TimeSeriesForcasting_db}
       JWT_SECRET: ${JWT_SECRET}
       JWT_EXPIRATION: ${JWT_EXPIRATION:-86400}
-    ports:
-      - "8000:8000"
+    expose:
+      - "8000"
     volumes:
       - ./backend:/app
     command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
@@ -79,8 +79,8 @@ services:
       dockerfile: Dockerfile
     # container_name: TimeSeriesForcasting_frontend
     restart: unless-stopped
-    ports:
-      - "4200:4200"
+    expose:
+      - "4200"
     volumes:
       - ./frontend:/app
       - /app/node_modules
@@ -134,6 +134,22 @@ services:
       - TimeSeriesForcasting_network
     depends_on:
       - backend
+
+  # --------------------------------------------------------------------------
+  # Reverse Proxy Nginx
+  # Unico punto di accesso pubblico (porta 80)
+  # --------------------------------------------------------------------------
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - backend
+      - frontend
+    networks:
+      - TimeSeriesForcasting_network
 
 networks:
   TimeSeriesForcasting_network:

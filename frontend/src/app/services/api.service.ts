@@ -8,7 +8,7 @@ import { ForecastChart, BacktestChart, TrainingResult } from '../models/api-data
 })
 export class ApiService {
   // L'indirizzo del tuo backend FastAPI
-  private apiUrl = 'http://localhost:8000';
+  private apiUrl = '/api';
 
   constructor(private http: HttpClient) { }
 

@@ -283,93 +283,95 @@ export class ForecastComponent implements OnInit {
     if (this.kalmanChart) this.kalmanChart.destroy();
     this.chart = null; this.pidChart = null; this.kalmanChart = null;
 
-    // --- BRIDGE THE GAP ---
-    let lastActualIndex = -1;
-    for (let i = displayData.actual.length - 1; i >= 0; i--) {
-      if (displayData.actual[i] !== null && displayData.actual[i] !== undefined) {
-        lastActualIndex = i;
-        break;
+    setTimeout(() => {
+      // --- BRIDGE THE GAP ---
+      let lastActualIndex = -1;
+      for (let i = displayData.actual.length - 1; i >= 0; i--) {
+        if (displayData.actual[i] !== null && displayData.actual[i] !== undefined) {
+          lastActualIndex = i;
+          break;
+        }
       }
-    }
 
-    if (lastActualIndex !== -1) {
-      const lastVal = displayData.actual_rounded?.[lastActualIndex] ?? displayData.actual[lastActualIndex];
-      if (lastVal !== null && lastVal !== undefined) {
-        const val = Number(lastVal);
-        const update = (arr: any[] | undefined, idx: number, v: number) => { if (arr && idx < arr.length) arr[idx] = v; };
-        update(displayData.prediction, lastActualIndex, val);
-        update(displayData.prediction_p10, lastActualIndex, val);
-        update(displayData.prediction_p90, lastActualIndex, val);
-        update(displayData.prediction_rounded, lastActualIndex, Math.round(val));
-        update(displayData.prediction_p10_rounded, lastActualIndex, Math.round(val));
-        update(displayData.prediction_p90_rounded, lastActualIndex, Math.round(val));
-        update(displayData.prediction_pid_rounded, lastActualIndex, Math.round(val));
-        update(displayData.prediction_kalman_rounded, lastActualIndex, Math.round(val));
+      if (lastActualIndex !== -1) {
+        const lastVal = displayData.actual_rounded?.[lastActualIndex] ?? displayData.actual[lastActualIndex];
+        if (lastVal !== null && lastVal !== undefined) {
+          const val = Number(lastVal);
+          const update = (arr: any[] | undefined, idx: number, v: number) => { if (arr && idx < arr.length) arr[idx] = v; };
+          update(displayData.prediction, lastActualIndex, val);
+          update(displayData.prediction_p10, lastActualIndex, val);
+          update(displayData.prediction_p90, lastActualIndex, val);
+          update(displayData.prediction_rounded, lastActualIndex, Math.round(val));
+          update(displayData.prediction_p10_rounded, lastActualIndex, Math.round(val));
+          update(displayData.prediction_p90_rounded, lastActualIndex, Math.round(val));
+          update(displayData.prediction_pid_rounded, lastActualIndex, Math.round(val));
+          update(displayData.prediction_kalman_rounded, lastActualIndex, Math.round(val));
+        }
       }
-    }
 
-    // --- RENDER ---
-    const canvas = this.chartCanvas()?.nativeElement;
-    if (canvas) {
-      const ctx = canvas.getContext('2d');
-      if (ctx) {
-        this.chart = new Chart(ctx, {
-          type: 'line',
-          data: {
-            labels: displayData.labels,
-            datasets: [
-              { label: 'P10', data: displayData.prediction_p10_rounded, borderColor: 'transparent', pointRadius: 0, fill: false, tension: 0.4 },
-              { label: 'Banda Previsione', data: displayData.prediction_p90_rounded, borderColor: 'rgba(153, 102, 255, 0.5)', backgroundColor: 'rgba(153, 102, 255, 0.3)', fill: 0, tension: 0.4, borderWidth: 0, pointRadius: 0 },
-              { label: 'Previsione', data: displayData.prediction_rounded, borderColor: 'rgba(153, 102, 255, 1)', fill: false, tension: 0.4, pointRadius: 2, borderWidth: 2 },
-              { label: 'Reale', data: displayData.actual_rounded || displayData.actual, borderColor: 'rgba(75, 192, 192, 1)', backgroundColor: 'rgba(75, 192, 192, 0.2)', fill: false, tension: 0.4, pointRadius: 4 }
-            ]
-          },
-          options: this.getChartOptions('Forecast (Modello Originale)')
-        });
+      // --- RENDER ---
+      const canvas = this.chartCanvas()?.nativeElement;
+      if (canvas) {
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          this.chart = new Chart(ctx, {
+            type: 'line',
+            data: {
+              labels: displayData.labels,
+              datasets: [
+                { label: 'P10', data: displayData.prediction_p10_rounded, borderColor: 'transparent', pointRadius: 0, fill: false, tension: 0.4 },
+                { label: 'Banda Previsione', data: displayData.prediction_p90_rounded, borderColor: 'rgba(153, 102, 255, 0.5)', backgroundColor: 'rgba(153, 102, 255, 0.3)', fill: 0, tension: 0.4, borderWidth: 0, pointRadius: 0 },
+                { label: 'Previsione', data: displayData.prediction_rounded, borderColor: 'rgba(153, 102, 255, 1)', fill: false, tension: 0.4, pointRadius: 2, borderWidth: 2 },
+                { label: 'Reale', data: displayData.actual_rounded || displayData.actual, borderColor: 'rgba(75, 192, 192, 1)', backgroundColor: 'rgba(75, 192, 192, 0.2)', fill: false, tension: 0.4, pointRadius: 4 }
+              ]
+            },
+            options: this.getChartOptions('Forecast (Modello Originale)')
+          });
+        }
       }
-    }
 
-    const canvasPid = this.pidCanvas()?.nativeElement;
-    if (canvasPid && displayData.prediction_pid_rounded) {
-      const ctxPid = canvasPid.getContext('2d');
-      if (ctxPid) {
-        const actuals = displayData.actual_rounded || displayData.actual;
-        this.pidChart = new Chart(ctxPid, {
-          type: 'line',
-          data: {
-            labels: displayData.labels,
-            datasets: [
-              { label: 'P10', data: displayData.prediction_p10_rounded, borderColor: 'transparent', pointRadius: 0, fill: false, tension: 0.4 },
-              { label: 'Banda Previsione', data: displayData.prediction_p90_rounded, backgroundColor: 'rgba(153, 102, 255, 0.3)', fill: 0, tension: 0.4, pointRadius: 0, borderWidth: 0 },
-              { label: 'Allocazione PID', data: displayData.prediction_pid_rounded, borderColor: 'rgba(153, 102, 255, 1)', fill: false, tension: 0.4, pointRadius: 2, borderWidth: 2 },
-              { label: 'Reale', data: actuals, borderColor: 'rgba(75, 192, 192, 1)', tension: 0.4, pointRadius: 4 }
-            ]
-          },
-          options: this.getChartOptions('Forecast (Allocazione PID)')
-        });
+      const canvasPid = this.pidCanvas()?.nativeElement;
+      if (canvasPid && displayData.prediction_pid_rounded) {
+        const ctxPid = canvasPid.getContext('2d');
+        if (ctxPid) {
+          const actuals = displayData.actual_rounded || displayData.actual;
+          this.pidChart = new Chart(ctxPid, {
+            type: 'line',
+            data: {
+              labels: displayData.labels,
+              datasets: [
+                { label: 'P10', data: displayData.prediction_p10_rounded, borderColor: 'transparent', pointRadius: 0, fill: false, tension: 0.4 },
+                { label: 'Banda Previsione', data: displayData.prediction_p90_rounded, backgroundColor: 'rgba(153, 102, 255, 0.3)', fill: 0, tension: 0.4, pointRadius: 0, borderWidth: 0 },
+                { label: 'Allocazione PID', data: displayData.prediction_pid_rounded, borderColor: 'rgba(153, 102, 255, 1)', fill: false, tension: 0.4, pointRadius: 2, borderWidth: 2 },
+                { label: 'Reale', data: actuals, borderColor: 'rgba(75, 192, 192, 1)', tension: 0.4, pointRadius: 4 }
+              ]
+            },
+            options: this.getChartOptions('Forecast (Allocazione PID)')
+          });
+        }
       }
-    }
 
-    const canvasKalman = this.kalmanCanvas()?.nativeElement;
-    if (canvasKalman && displayData.prediction_kalman_rounded) {
-      const ctxKalman = canvasKalman.getContext('2d');
-      if (ctxKalman) {
-        const actuals = displayData.actual_rounded || displayData.actual;
-        this.kalmanChart = new Chart(ctxKalman, {
-          type: 'line',
-          data: {
-            labels: displayData.labels,
-            datasets: [
-              { label: 'P10', data: displayData.prediction_p10_rounded, borderColor: 'transparent', pointRadius: 0, fill: false, tension: 0.4 },
-              { label: 'Banda Previsione', data: displayData.prediction_p90_rounded, backgroundColor: 'rgba(153, 102, 255, 0.3)', fill: 0, tension: 0.4, pointRadius: 0, borderWidth: 0 },
-              { label: 'Allocazione Kalman', data: displayData.prediction_kalman_rounded, borderColor: 'rgba(153, 102, 255, 1)', fill: false, tension: 0.4, pointRadius: 2, borderWidth: 2 },
-              { label: 'Reale', data: actuals, borderColor: 'rgba(75, 192, 192, 1)', tension: 0.4, pointRadius: 4 }
-            ]
-          },
-          options: this.getChartOptions('Forecast (Allocazione Kalman)')
-        });
+      const canvasKalman = this.kalmanCanvas()?.nativeElement;
+      if (canvasKalman && displayData.prediction_kalman_rounded) {
+        const ctxKalman = canvasKalman.getContext('2d');
+        if (ctxKalman) {
+          const actuals = displayData.actual_rounded || displayData.actual;
+          this.kalmanChart = new Chart(ctxKalman, {
+            type: 'line',
+            data: {
+              labels: displayData.labels,
+              datasets: [
+                { label: 'P10', data: displayData.prediction_p10_rounded, borderColor: 'transparent', pointRadius: 0, fill: false, tension: 0.4 },
+                { label: 'Banda Previsione', data: displayData.prediction_p90_rounded, backgroundColor: 'rgba(153, 102, 255, 0.3)', fill: 0, tension: 0.4, pointRadius: 0, borderWidth: 0 },
+                { label: 'Allocazione Kalman', data: displayData.prediction_kalman_rounded, borderColor: 'rgba(153, 102, 255, 1)', fill: false, tension: 0.4, pointRadius: 2, borderWidth: 2 },
+                { label: 'Reale', data: actuals, borderColor: 'rgba(75, 192, 192, 1)', tension: 0.4, pointRadius: 4 }
+              ]
+            },
+            options: this.getChartOptions('Forecast (Allocazione Kalman)')
+          });
+        }
       }
-    }
+    }, 0);
   }
 
   private getChartOptions(title: string): any {

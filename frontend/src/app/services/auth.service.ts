@@ -7,7 +7,7 @@ import { Router } from '@angular/router';
   providedIn: 'root'
 })
 export class AuthService {
-  private apiUrl = 'http://localhost:8000/api/auth';
+  private apiUrl = '/api/auth';
   private tokenKey = 'jwt_token';
   
   // BehaviorSubject per gestire lo stato in modo reattivo
