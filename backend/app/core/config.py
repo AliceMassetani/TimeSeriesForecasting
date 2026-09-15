@@ -10,6 +10,10 @@ class Settings(BaseSettings):
     DB_HOST: str
     DB_NAME: str
 
+    # JWT Authentication — letti dall'ambiente, mai hardcodati
+    JWT_SECRET: str
+    JWT_EXPIRATION: int = 86400  # Scadenza token in secondi (default: 24h)
+
     # PID Controller Settings — P+D stabile, Kd ridotto per evitare oscillazioni
     PID_KP: float = 0.3
     PID_KI: float = 0.0

@@ -22,7 +22,9 @@ HISTORY_HOURS=740
 
 # --- 1. Impacchetta la Lambda ---
 echo "[1/5] Impacchettamento Lambda..."
-cd "$LAMBDA_CODE_DIR"
+mkdir -p /tmp/lambda-build
+cp -r "$LAMBDA_CODE_DIR"/* /tmp/lambda-build/
+cd /tmp/lambda-build
 pip install -r requirements.txt -t . --quiet
 zip -r /tmp/lambda.zip . -x "__pycache__/*" "*.pyc"
 echo "       ZIP creato: $(du -h /tmp/lambda.zip | cut -f1)"

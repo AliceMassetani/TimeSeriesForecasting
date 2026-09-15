@@ -17,6 +17,10 @@ pytorch_lightning     # Richiesto da darts per TSMixerModel e altri modelli PyTo
 
 matplotlib            # Necessaria se vuoi generare grafici dei modelli
 
+# --- Authentication ---
+bcrypt==4.2.1             # Password hashing con BCrypt
+PyJWT==2.9.0              # Generazione e verifica token JWT
+
 # --- Utility ---
 python-multipart      # Necessario se riceverai file o form dal frontend
 python-dotenv         # Per leggere il file .env se necessario dal codice

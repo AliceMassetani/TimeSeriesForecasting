@@ -1,4 +1,4 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 import os
@@ -11,6 +11,8 @@ from app.db.base import Base
 from app.api.backtest import router as backtest_router
 from app.api.forecast import router as forecast_router
 from app.api.training import router as training_router
+from app.api.auth import router as auth_router
+from app.core.security import get_current_user
 
 # Creazione delle tabelle nel database all'avvio
 Base.metadata.create_all(bind=engine)
@@ -31,7 +33,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Endpoint di benvenuto
+# Endpoint di benvenuto (pubblico)
 @app.get("/")
 async def root():
     return {
@@ -40,7 +42,10 @@ async def root():
         "docs": "/docs"
     }
 
-# Inclusione dei router
-app.include_router(backtest_router, prefix="/backtest", tags=["Backtest"])
-app.include_router(forecast_router, prefix="/forecast", tags=["Forecast"])
-app.include_router(training_router, prefix="/train", tags=["Training"])
+# Router PUBBLICO — Autenticazione (register / login)
+app.include_router(auth_router, prefix="/api/auth", tags=["Auth"])
+
+# Router PROTETTI — Richiedono JWT valido nell'header Authorization: Bearer <token>
+app.include_router(backtest_router, prefix="/backtest", tags=["Backtest"], dependencies=[Depends(get_current_user)])
+app.include_router(forecast_router, prefix="/forecast", tags=["Forecast"], dependencies=[Depends(get_current_user)])
+app.include_router(training_router, prefix="/train", tags=["Training"], dependencies=[Depends(get_current_user)])

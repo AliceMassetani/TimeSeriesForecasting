@@ -37,6 +37,10 @@ class ForecastRepository(IForecastRepository):
                 prediction_rounded=[], 
                 prediction_p10_rounded=[],
                 prediction_p90_rounded=[],
+                prediction_pid=[],
+                prediction_pid_rounded=[],
+                prediction_kalman=[],
+                prediction_kalman_rounded=[],
                 actual=[]
             )
 

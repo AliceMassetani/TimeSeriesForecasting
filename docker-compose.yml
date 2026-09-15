@@ -16,7 +16,7 @@ services:
   # --------------------------------------------------------------------------
   mariadb:
     image: mariadb:11.8
-    container_name: TimeSeriesForcasting_database
+    # container_name: TimeSeriesForcasting_database
     env_file:
       - .env
     restart: unless-stopped
@@ -46,7 +46,7 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
-    container_name: TimeSeriesForcasting_backend
+    # container_name: TimeSeriesForcasting_backend
     env_file:
       - .env
     restart: unless-stopped
@@ -56,6 +56,8 @@ services:
       DB_USER: ${MYSQL_USER}      
       DB_PASSWORD: ${MYSQL_PASSWORD}
       DB_NAME: ${MYSQL_DATABASE:-TimeSeriesForcasting_db}
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_EXPIRATION: ${JWT_EXPIRATION:-86400}
     ports:
       - "8000:8000"
     volumes:
@@ -75,7 +77,7 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
-    container_name: TimeSeriesForcasting_frontend
+    # container_name: TimeSeriesForcasting_frontend
     restart: unless-stopped
     ports:
       - "4200:4200"
@@ -93,7 +95,7 @@ services:
   # --------------------------------------------------------------------------
   phpmyadmin:
     image: phpmyadmin:5.2
-    container_name: TimeSeriesForcasting_phpmyadmin
+    # container_name: TimeSeriesForcasting_phpmyadmin
     env_file:
       - .env
     restart: unless-stopped
@@ -116,7 +118,7 @@ services:
   # --------------------------------------------------------------------------
   localstack:
     image: localstack/localstack
-    container_name: TimeSeriesForcasting_localstack
+    # container_name: TimeSeriesForcasting_localstack
     ports:
       - "4566:4566"
     environment:
