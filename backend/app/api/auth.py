@@ -6,6 +6,7 @@ from ..schemas.auth import UserRegister, UserLogin, TokenResponse, UserOut
 from ..services.auth_service import auth_service
 from ..repositories.user_repository import UserRepository
 from ..entities.user import User
+from ..core.security import get_current_user
 
 router = APIRouter()
 
@@ -58,3 +59,21 @@ async def login(data: UserLogin, db: Session = Depends(get_db)):
     token = auth_service.create_token(user.id, user.username)
 
     return TokenResponse(access_token=token)
+
+@router.delete("/users/{id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_account(id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """
+    Elimina l'account utente.
+    Prevenzione IDOR: verifica che l'ID passato nell'URL sia uguale a quello decodificato dal JWT.
+    """
+    if id != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Operazione non consentita: non puoi eliminare l'account di un altro utente (IDOR Prevented)."
+        )
+    
+    repo = UserRepository(db)
+    success = repo.delete_user(id)
+    if not success:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Utente non trovato.")
+    return

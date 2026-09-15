@@ -1,13 +1,15 @@
 # TimeSeriesForecasting: Predictive Autoscaler ML
 
-**Corso:** Progettazione di Applicazioni Web e Mobile  
+**Corso:** Progettazione di Applicazioni Web e Mobile (Prof. Bonura)  
 **Università:** Università degli Studi di Camerino (UNICAM)
 
 ---
 
-## 1. Panoramica del Progetto
+## 1. Panoramica del Progetto e Contesto Aziendale
 
-Il progetto **TimeSeriesForecasting** è una piattaforma avanzata basata sul Machine Learning per l'analisi e la previsione di serie storiche, orientata all'ottimizzazione del *Predictive Autoscaling* di risorse cloud. Tramite l'impiego di modelli predittivi, il sistema mira ad anticipare i picchi di carico (capacità *InUse*) e a proporre un ridimensionamento proattivo delle risorse, minimizzando sprechi energetici ed economici.
+Il progetto **TimeSeriesForecasting** nasce all'interno dell'esperienza di stage presso l'azienda **Apra**. L'obiettivo è realizzare una piattaforma avanzata basata sul Machine Learning per l'analisi e la previsione di serie storiche, orientata all'ottimizzazione del *Predictive Autoscaling* di risorse cloud. 
+
+**Origine dei Dati:** Il dataset delle serie temporali utilizzato proviene dal monitoraggio reale delle metriche **AWS**, nello specifico relative agli utenti connessi all'infrastruttura **Amazon AppStream**. Tramite l'impiego di modelli predittivi, il sistema mira ad anticipare i picchi di carico (capacità *InUse*) e a proporre un ridimensionamento proattivo delle risorse, minimizzando sprechi energetici ed ottimizzando i costi operativi sul cloud AWS.
 
 L'applicazione è sviluppata come una moderna **Web App Full-Stack**. Il backend è un'API ad alte prestazioni basata su **FastAPI**, mentre il client è una **Single Page Application (SPA)** reattiva costruita con **Angular**. L'intero sistema è containerizzato per facilitare il deployment tramite Docker.
 
@@ -40,7 +42,35 @@ L'interfaccia utente è progettata per offrire un'esperienza fluida e premium:
 
 ---
 
-## 3. Tech Stack
+## 3. Sicurezza e Prevenzione Vulnerabilità
+
+Il sistema è stato sottoposto ad audit di sicurezza e implementa rigorose misure protettive contro i vettori di attacco più comuni, soddisfando i requisiti accademici avanzati.
+
+- **Protezione IDOR (Insecure Direct Object Reference):** Le operazioni che richiedono l'accesso, la modifica o l'eliminazione di risorse tramite ID specifici (es. `DELETE /api/auth/users/{id}`) implementano severi controlli di *ownership*. Il backend confronta sempre l'ID richiesto nell'URL con il `current_user.id` estratto e validato in modo sicuro dal token JWT, rigettando le richieste non autorizzate con un errore `403 Forbidden`.
+- **Protezione XSS (Cross-Site Scripting):** 
+  - *Frontend:* L'applicazione Angular fa esclusivo uso della sintassi di binding nativa (`{{ value }}`), la quale applica un escaping automatico disinnescando qualsiasi potenziale script dannoso. Non viene mai utilizzato `innerHTML` in modo non sicuro per renderizzare l'input utente.
+  - *Backend:* Gli input in ingresso vengono validati e igienizzati preventivamente tramite gli schemi Pydantic. Ad esempio, il form di login/registrazione applica una restrizione RegEx nativa (`pattern=r"^[^<>]*$"`) che rifiuta direttamente a monte l'inserimento di tag HTML.
+- **Prevenzione SQL Injection:** Ogni singola interrogazione o interazione con la base dati MariaDB avviene interfacciandosi con **SQLAlchemy ORM**. Questo assicura che vengano sempre utilizzate *query parametrizzate* (parameterized queries) generate dal motore ORM, rendendo tecnicamente impossibile l'esecuzione di SQL Injection tramite la concatenazione malevola di stringhe.
+
+---
+
+## 4. Configurazione e Avvio (Ambiente Docker)
+
+L'applicativo utilizza Docker e Docker Compose per orchestrare rapidamente Frontend, Backend, Database e la componente LocalStack (AWS). 
+
+Prima di avviare i container, è **obbligatorio** configurare le variabili d'ambiente fornite a modello:
+1. Individua il file `.env.example` presente nella root del progetto.
+2. Copia o rinomina il file in `.env`.
+3. Inserisci o verifica i valori per i secret necessari (es. `JWT_SECRET`, credenziali DB, configurazioni CORS).
+
+Una volta configurato l'ambiente, procedi con l'avvio del sistema:
+```bash
+docker compose up -d
+```
+
+---
+
+## 5. Tech Stack
 
 ### ⚙️ Backend
 - **Core:** Python 3.10+, FastAPI
@@ -60,25 +90,20 @@ L'interfaccia utente è progettata per offrire un'esperienza fluida e premium:
 
 ---
 
-## 4. Struttura delle API REST
+## 6. Struttura delle API REST
 
-L'API documenta automaticamente le sue rotte (disponibili via Swagger UI all'indirizzo `/docs`). Il sistema di rotte si divide in due macro-categorie:
+L'API documenta automaticamente le sue rotte (disponibili via Swagger UI all'indirizzo `http://localhost:8000/docs`). Il sistema di rotte si divide in due macro-categorie:
 
 ### 🔓 Rotte Pubbliche (Nessuna Autenticazione Richiesta)
 
 - `POST /api/auth/register`
-  - **Body:** `{ "username": "...", "password": "..." }`
   - **Azione:** Crea un nuovo account, esegue l'hashing BCrypt della password e lo salva a DB.
-  - **Risposte:** `201 Created` / `400 Bad Request` (Es. Username già in uso).
-
 - `POST /api/auth/login`
-  - **Body:** Form Data (`OAuth2PasswordRequestForm`) o JSON con username/password.
-  - **Azione:** Valida le credenziali e restituisce il token.
-  - **Risposte:** `200 OK` (Restituisce `{ "access_token": "...", "token_type": "bearer" }`) / `401 Unauthorized`.
+  - **Azione:** Valida le credenziali e restituisce il token JWT Bearer.
 
 ### 🔒 Rotte Protette
 
-Tutti i seguenti endpoint richiedono tassativamente un Token JWT valido passato negli headers HTTP della richiesta (`Authorization: Bearer <token>`). In caso contrario, il middleware FastAPI (Dipendenza `get_current_user`) restituirà un errore `401 Unauthorized` o `403 Forbidden`.
+Tutti i seguenti endpoint richiedono tassativamente un Token JWT valido passato negli headers HTTP della richiesta (`Authorization: Bearer <token>`). In caso contrario il server restituirà un errore `401 Unauthorized` o `403 Forbidden`.
 
 - `GET /forecast/*` (es. `/history`, `/run`)
   - **Azione:** Generazione predizioni future e interrogazione storico predittivo.
@@ -86,3 +111,5 @@ Tutti i seguenti endpoint richiedono tassativamente un Token JWT valido passato 
   - **Azione:** Simulazione di affidabilità del modello su dati passati e relative metriche prestazionali (MSE, RMSE).
 - `POST /train/*`
   - **Azione:** Addestramento e ricalibrazione del modello di Machine Learning con nuovi set di dati.
+- `DELETE /api/auth/users/{id}`
+  - **Azione:** Eliminazione del proprio account utente (implementazione a scopi di sicurezza e protezione IDOR).

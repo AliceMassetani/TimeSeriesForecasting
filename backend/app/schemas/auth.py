@@ -4,7 +4,7 @@ from datetime import datetime
 
 class UserRegister(BaseModel):
     """Schema per la richiesta di registrazione."""
-    username: str = Field(..., min_length=3, max_length=150, description="Username univoco")
+    username: str = Field(..., min_length=3, max_length=150, pattern=r"^[^<>]*$", description="Username univoco, no tag HTML per prevenire XSS")
     password: str = Field(..., min_length=6, max_length=128, description="Password in chiaro (verrà hashata con BCrypt)")
 
 
