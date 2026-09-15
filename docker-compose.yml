@@ -28,8 +28,8 @@ services:
     volumes:
       - mariadb_data:/var/lib/mysql
       - ./database:/docker-entrypoint-initdb.d
-    ports:
-      - "3380:3306"
+    expose:
+      - "3306"
     healthcheck:
       test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
       interval: 10s
@@ -104,8 +104,8 @@ services:
       PMA_PORT: 3306
       PMA_USER: root
       PMA_PASSWORD: ${MYSQL_ROOT_PASSWORD}
-    ports:
-      - "8081:80"
+    expose:
+      - "80"
     depends_on:
       mariadb:
         condition: service_healthy
@@ -119,8 +119,8 @@ services:
   localstack:
     image: localstack/localstack
     # container_name: TimeSeriesForcasting_localstack
-    ports:
-      - "4566:4566"
+    expose:
+      - "4566"
     environment:
       - SERVICES=lambda,events,cloudwatch
       - LAMBDA_DOCKER_NETWORK=predictive-autoscaler-ml_TimeSeriesForcasting_network
