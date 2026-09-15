@@ -123,3 +123,7 @@
   font-family: monospace;
 }
 
+/* Quando la sidebar è nascosta (es. pagina login) */
+.no-sidebar .content-area {
+  padding: 0;
+}

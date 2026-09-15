@@ -1,0 +1,59 @@
+<div class="auth-container">
+  <!-- Sfondo animato -->
+  <div class="bg-shape shape-1"></div>
+  <div class="bg-shape shape-2"></div>
+  <div class="bg-shape shape-3"></div>
+
+  <div class="glass-card">
+    <div class="card-header">
+      <div class="logo">
+        <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#3b82f6" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="22 7 13.5 15.5 8.5 10.5 2 17"></polyline>
+          <polyline points="16 7 22 7 22 13"></polyline>
+        </svg>
+      </div>
+      <h2>APRA<span>Scaler</span></h2>
+      <p class="subtitle">{{ isLoginMode() ? 'Accedi al tuo account' : 'Crea un nuovo account' }}</p>
+    </div>
+
+    <form [formGroup]="authForm" (ngSubmit)="onSubmit()" class="auth-form">
+      <div class="input-group">
+        <label for="username">Username</label>
+        <div class="input-wrapper">
+          <svg class="input-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+          <input type="text" id="username" formControlName="username" placeholder="Inserisci username" [class.is-invalid]="authForm.get('username')?.invalid && authForm.get('username')?.touched">
+        </div>
+        <span class="error-msg" *ngIf="authForm.get('username')?.hasError('minlength') && authForm.get('username')?.touched">Minimo 3 caratteri</span>
+        <span class="error-msg" *ngIf="authForm.get('username')?.hasError('required') && authForm.get('username')?.touched">Username obbligatorio</span>
+      </div>
+
+      <div class="input-group">
+        <label for="password">Password</label>
+        <div class="input-wrapper">
+          <svg class="input-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+          <input type="password" id="password" formControlName="password" placeholder="Inserisci password" [class.is-invalid]="authForm.get('password')?.invalid && authForm.get('password')?.touched">
+        </div>
+        <span class="error-msg" *ngIf="authForm.get('password')?.hasError('minlength') && authForm.get('password')?.touched">Minimo 6 caratteri</span>
+        <span class="error-msg" *ngIf="authForm.get('password')?.hasError('required') && authForm.get('password')?.touched">Password obbligatoria</span>
+      </div>
+
+      <div class="error-banner" *ngIf="errorMessage()">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+        <span>{{ errorMessage() }}</span>
+      </div>
+
+      <button type="submit" class="submit-btn" [disabled]="authForm.invalid || isLoading()">
+        <span *ngIf="!isLoading()">{{ isLoginMode() ? 'Accedi' : 'Registrati' }}</span>
+        <span *ngIf="isLoading()" class="spinner"></span>
+      </button>
+    </form>
+
+    <div class="card-footer">
+      <p>{{ isLoginMode() ? 'Non hai un account?' : 'Hai già un account?' }} 
+        <a href="javascript:void(0)" (click)="toggleMode()" class="toggle-link">
+          {{ isLoginMode() ? 'Registrati' : 'Accedi' }}
+        </a>
+      </p>
+    </div>
+  </div>
+</div>
