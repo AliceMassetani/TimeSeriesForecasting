@@ -12,6 +12,7 @@ from app.api.backtest import router as backtest_router
 from app.api.forecast import router as forecast_router
 from app.api.training import router as training_router
 from app.api.auth import router as auth_router
+from app.api.internal import router as internal_router
 from app.core.security import get_current_user
 
 # Creazione delle tabelle nel database all'avvio
@@ -49,3 +50,7 @@ app.include_router(auth_router, prefix="/api/auth", tags=["Auth"])
 app.include_router(backtest_router, prefix="/api/backtest", tags=["Backtest"], dependencies=[Depends(get_current_user)])
 app.include_router(forecast_router, prefix="/api/forecast", tags=["Forecast"], dependencies=[Depends(get_current_user)])
 app.include_router(training_router, prefix="/api/train", tags=["Training"], dependencies=[Depends(get_current_user)])
+
+# Router INTERNO — Comunicazione Service-to-Service (Lambda → Backend)
+# Nessuna autenticazione JWT: protetto a livello di rete (Nginx non inoltra /internal/)
+app.include_router(internal_router, prefix="/internal", tags=["Internal"])

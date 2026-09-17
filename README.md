@@ -28,10 +28,12 @@ Il backend adotta un'architettura a livelli (N-Tier) fortemente disaccoppiata:
   - *Entities* (SQLAlchemy) in `app/entities/` mappano le tabelle del database relazionale.
   - *Schemas* (Pydantic) in `app/schemas/` gestiscono la serializzazione/deserializzazione e la validazione dei dati JSON scambiati via API.
 
-### Architettura Cloud-Native (Reverse Proxy)
+### Architettura Cloud-Native (Reverse Proxy + API Interne)
 Per garantire una netta separazione tra traffico utente e richieste ai servizi, l'applicativo utilizza **Nginx** come reverse proxy unico (esposto sulla porta 80). 
 - Le richieste del browser dirette alla radice (`/`) vengono instradate alla Single Page Application (Angular).
 - Tutte le chiamate al backend (es. dati ML o autenticazione) vengono intercettate tramite il prefisso `/api/` e instradate internamente. In questo modo le porte dei container (FastAPI, Angular) restano nascoste e non sono mai esposte direttamente, rispettando i principi di sicurezza Cloud-Native e prevenendo problemi di CORS.
+
+**Comunicazione Service-to-Service (Lambda → Backend):** Il backend espone un secondo set di endpoint sotto il prefisso `/internal/`, dedicati esclusivamente alla comunicazione tra servizi interni (es. la Lambda AWS che richiede previsioni). Questi endpoint **non richiedono autenticazione JWT** e sono protetti a livello di rete: Nginx non inoltra il prefisso `/internal/`, rendendoli invisibili dall'esterno e raggiungibili solo dai container sulla stessa rete Docker. Questo segue il pattern standard delle architetture a microservizi, dove l'autenticazione utente (JWT) è separata dalla fiducia tra servizi interni (network-level trust).
 
 ### Autenticazione Stateless (JWT + BCrypt)
 A differenza delle sessioni classiche *stateful* basate su cookie (che richiedono il salvataggio dello stato sul server o su Redis), l'applicativo implementa un'autenticazione **Stateless basata su JSON Web Tokens (JWT)**.
@@ -100,7 +102,7 @@ La documentazione interattiva (Swagger UI) per le API del backend sarà accessib
 
 ## 6. Struttura delle API REST
 
-L'API documenta automaticamente le sue rotte (disponibili via Swagger UI all'indirizzo `http://localhost/docs`). Il sistema di rotte si divide in due macro-categorie, tutte unificate sotto il path `/api/`:
+L'API documenta automaticamente le sue rotte (disponibili via Swagger UI all'indirizzo `http://localhost/docs`). Il sistema di rotte si divide in tre macro-categorie:
 
 ### 🔓 Rotte Pubbliche (Nessuna Autenticazione Richiesta)
 
@@ -109,7 +111,7 @@ L'API documenta automaticamente le sue rotte (disponibili via Swagger UI all'ind
 - `POST /api/auth/login`
   - **Azione:** Valida le credenziali e restituisce il token JWT Bearer.
 
-### 🔒 Rotte Protette
+### 🔒 Rotte Protette (JWT Obbligatorio)
 
 Tutti i seguenti endpoint richiedono tassativamente un Token JWT valido passato negli headers HTTP della richiesta (`Authorization: Bearer <token>`). In caso contrario il server restituirà un errore `401 Unauthorized` o `403 Forbidden`.
 
@@ -121,3 +123,12 @@ Tutti i seguenti endpoint richiedono tassativamente un Token JWT valido passato 
   - **Azione:** Addestramento e ricalibrazione del modello di Machine Learning con nuovi set di dati.
 - `DELETE /api/auth/users/{id}`
   - **Azione:** Eliminazione del proprio account utente (implementazione a scopi di sicurezza e protezione IDOR).
+
+### 🔗 Rotte Interne — Service-to-Service (Nessun JWT, protette a livello di rete)
+
+Questi endpoint sono riservati alla comunicazione interna tra servizi (es. Lambda → Backend). Non richiedono autenticazione JWT poiché sono protetti a livello di rete Docker: **Nginx non inoltra il prefisso `/internal/`**, rendendoli inaccessibili dall'esterno.
+
+- `POST /internal/forecast/run`
+  - **Azione:** Riceve un CSV con le metriche CloudWatch dalla Lambda e genera il forecast.
+- `GET /internal/forecast/latest-prediction`
+  - **Azione:** Restituisce la previsione futura più imminente con la `desired_capacity` calcolata.

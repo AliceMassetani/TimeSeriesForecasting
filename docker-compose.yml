@@ -122,8 +122,8 @@ services:
     expose:
       - "4566"
     environment:
-      - SERVICES=lambda,events,cloudwatch
-      - LAMBDA_DOCKER_NETWORK=predictive-autoscaler-ml_TimeSeriesForcasting_network
+      - SERVICES=lambda,events,cloudwatch,logs
+      - LAMBDA_DOCKER_NETWORK=timeseriesforecasting_TimeSeriesForcasting_network
       - LOCALSTACK_AUTH_TOKEN=${LOCALSTACK_AUTH_TOKEN}
       - DEBUG=1
     volumes:

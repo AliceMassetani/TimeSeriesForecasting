@@ -86,9 +86,9 @@ def format_as_csv(metrics):
 def trigger_forecast(csv_bytes):
     """
     Invia il CSV al backend come multipart file upload.
-    Usa lo stesso endpoint del frontend (POST /forecast/run).
+    Usa l'endpoint interno senza autenticazione (POST /internal/forecast/run).
     """
-    url = f"{BACKEND_URL}/forecast/run?history_hours=-1&quantile=0.9"
+    url = f"{BACKEND_URL}/internal/forecast/run?history_hours=-1&quantile=0.9"
 
     boundary = "----LambdaBoundary"
     body = (
@@ -117,7 +117,7 @@ def get_prediction():
     Chiama il Backend FastAPI per ottenere la prossima previsione.
     Ritorna il dizionario con desired_capacity e i dettagli.
     """
-    url = f"{BACKEND_URL}/forecast/latest-prediction"
+    url = f"{BACKEND_URL}/internal/forecast/latest-prediction"
     logger.info(f"Chiamata al backend: {url}")
 
     req = urllib.request.Request(url)
